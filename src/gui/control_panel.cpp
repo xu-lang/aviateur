@@ -563,10 +563,11 @@ void ControlPanel::custom_ready() {
                     if (GuiInterface::Instance().use_gstreamer_) {
                         GuiInterface::Instance().EmitRtpStream("udp://0.0.0.0:" + port);
                     } else {
-                        GuiInterface::Instance().NotifyRtpStream(96,
-                                                                 0,
-                                                                 std::stoi(port),
-                                                                 GuiInterface::Instance().rtp_codec_);
+                        GuiInterface::Instance().NotifyRtpStream(97,
+                                                                  0,
+                                                                  std::stoi(port),
+                                                                  GuiInterface::Instance().rtp_codec_,
+                                                                  "0.0.0.0");
                     }
 
                     GuiInterface::Instance().ini_[CONFIG_LOCALHOST][CONFIG_LOCALHOST_PORT] = port;

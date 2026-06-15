@@ -2,6 +2,7 @@
 
 #include "../gui_interface.h"
 #include "src/player/ffmpeg/video_player.h"
+#include <fmt/format.h>
 #ifdef AVIATEUR_USE_GSTREAMER
     #include "src/player/gst/video_player.h"
 #endif
@@ -325,11 +326,11 @@ void PlayerRect::custom_ready() {
     auto onBitrateUpdate = [this](uint64_t bitrate) {
         std::string text = FTR("bitrate") + ": ";
         if (bitrate > 1024 * 1024) {
-            text += std::format("{:.1f}", bitrate / 1024.0 / 1024.0) + " Mbps";
+            text += fmt::format("{:.1f}", bitrate / 1024.0 / 1024.0) + " Mbps";
         } else if (bitrate > 1024) {
-            text += std::format("{:.1f}", bitrate / 1024.0) + " Kbps";
+            text += fmt::format("{:.1f}", bitrate / 1024.0) + " Kbps";
         } else {
-            text += std::format("{:d}", bitrate) + " bps";
+            text += fmt::format("{:d}", bitrate) + " bps";
         }
         bitrate_label_->set_text(text);
         bitrate_label_->show();

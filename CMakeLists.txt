@@ -24,6 +24,7 @@ option(AVIATEUR_ENABLE_GSTREAMER "Enable GStreamer" ON)
 option(AVIATEUR_ENABLE_OPENCV "Enable OpenCV" OFF)
 
 find_package(PkgConfig REQUIRED)
+find_package(fmt REQUIRED)
 
 if (WIN32)
     pkg_check_modules(LIBUSB REQUIRED IMPORTED_TARGET libusb-1.0)
@@ -138,6 +139,7 @@ add_subdirectory(3rd/SDL)
 target_include_directories(${PROJECT_NAME} PRIVATE "3rd/SDL/include")
 
 target_include_directories(${PROJECT_NAME} PRIVATE "src/wifi/wfb-ng/include")
+target_link_libraries(${PROJECT_NAME} PRIVATE fmt::fmt)
 
 file(COPY assets DESTINATION ${CMAKE_BINARY_DIR})
 

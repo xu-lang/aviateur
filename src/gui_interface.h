@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <future>
+#include <fmt/format.h>
 #include <nlohmann/json.hpp>
 
 #ifdef __linux__
@@ -376,7 +377,11 @@ public:
         }
     }
 
-    static void BuildSdp(const std::string &filePath, const std::string &codec, int payloadType, int port) {
+    static void BuildSdp(const std::string &filePath,
+                         const std::string &codec,
+                         int payloadType,
+                         int port,
+                         const std::string &address = "127.0.0.1") {
         auto absolutePath = std::filesystem::absolute(filePath);
         std::string dirPath = absolutePath.parent_path().string();
 
@@ -390,12 +395,13 @@ public:
 
         std::ofstream sdpFos(filePath);
         sdpFos << "v=0\n";
-        sdpFos << "o=- 0 0 IN IP4 127.0.0.1\n";
+        sdpFos << "o=- 0 0 IN IP4 " << address << "\n";
         sdpFos << "s=No Name\n";
-        sdpFos << "c=IN IP4 127.0.0.1\n";
+        sdpFos << "c=IN IP4 " << address << "\n";
         sdpFos << "t=0 0\n";
         sdpFos << "m=video " << port << " RTP/AVP " << payloadType << "\n";
         sdpFos << "a=rtpmap:" << payloadType << " " << codec << "/90000\n";
+        sdpFos << "a=recvonly\n";
         sdpFos.flush();
         sdpFos.close();
 
@@ -406,11 +412,15 @@ public:
 
     template <typename... Args>
     void PutLog(LogLevel level, const std::string_view message, Args... format_items) {
-        std::string str = std::vformat(message, std::make_format_args(format_items...));
+        std::string str = fmt::vformat(message, fmt::make_format_args(format_items...));
         EmitLog(level, str);
     }
 
-    void NotifyRtpStream(int pt, uint16_t ssrc, int port, const std::string &codec) {
+    void NotifyRtpStream(int pt,
+                         uint16_t ssrc,
+                         int port,
+                         const std::string &codec,
+                         const std::string &address = "127.0.0.1") {
         if (Instance().forward_port_.has_value()) {
             return;
         }
@@ -419,7 +429,7 @@ public:
 
         std::string sdpFile = dir + "sdp/port-" + std::to_string(port) + ".sdp";
 
-        BuildSdp(sdpFile, codec, pt, port);
+        BuildSdp(sdpFile, codec, pt, port, address);
 
         EmitRtpStream(sdpFile);
     }

@@ -5,9 +5,10 @@
     #include <cassert>
     #include <cinttypes>
     #include <cstring>
-    #include <format>
     #include <stdexcept>
     #include <string>
+
+    #include <fmt/format.h>
 
     #include "endian.h"
 
@@ -22,15 +23,15 @@ Aggregator::Aggregator(const std::string &keypair, uint64_t epoch, uint32_t chan
 
     FILE *fp;
     if ((fp = fopen(keypair.c_str(), "rb")) == NULL) {
-        throw std::runtime_error(std::format("Unable to open {}: {}", keypair.c_str(), strerror(errno)));
+        throw std::runtime_error(fmt::format("Unable to open {}: {}", keypair.c_str(), strerror(errno)));
     }
     if (fread(rx_secretkey, crypto_box_SECRETKEYBYTES, 1, fp) != 1) {
         fclose(fp);
-        throw std::runtime_error(std::format("Unable to read rx secret key: {}", strerror(errno)));
+        throw std::runtime_error(fmt::format("Unable to read rx secret key: {}", strerror(errno)));
     }
     if (fread(tx_publickey, crypto_box_PUBLICKEYBYTES, 1, fp) != 1) {
         fclose(fp);
-        throw std::runtime_error(std::format("Unable to read tx public key: {}", strerror(errno)));
+        throw std::runtime_error(fmt::format("Unable to read tx public key: {}", strerror(errno)));
     }
     fclose(fp);
 }
