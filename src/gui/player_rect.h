@@ -4,7 +4,10 @@
 #include "app.h"
 #include "tip_label.h"
 
+#include <atomic>
+
 class SignalBar;
+class SignalMetricsOverlay;
 class GstDecoder;
 
 class PlayerRect final : public revector::TextureRect {
@@ -34,11 +37,23 @@ public:
 
     std::shared_ptr<revector::VBoxContainer> hud_container_;
 
+    std::shared_ptr<revector::Label> timestamp_overlay_label_;
+
+    std::shared_ptr<SignalMetricsOverlay> signal_metrics_overlay_;
+
     std::shared_ptr<revector::Label> record_status_label_;
 
     std::shared_ptr<revector::Label> bitrate_label_;
 
     std::shared_ptr<revector::Label> decoder_label_;
+
+    std::shared_ptr<revector::Label> frame_ts_label_;
+
+    std::shared_ptr<revector::Label> render_ts_label_;
+
+    std::shared_ptr<revector::Label> rtp_loss_label_;
+
+    std::shared_ptr<revector::Label> rtp_ts_label_;
 
     std::shared_ptr<revector::Label> pl_label_;
 
@@ -46,9 +61,15 @@ public:
 
     std::vector<std::shared_ptr<SignalBar>> link_score_bars_;
 
+    std::vector<std::shared_ptr<SignalBar>> rssi_bars_;
+
+    std::vector<std::shared_ptr<SignalBar>> snr_bars_;
+
     std::shared_ptr<revector::Label> video_info_label_;
 
     std::shared_ptr<revector::Label> render_fps_label_;
+
+    std::shared_ptr<revector::Label> video_fps_label_;
 
     std::shared_ptr<revector::Button> video_stabilization_button_;
     std::shared_ptr<revector::Button> low_light_enhancement_button_;
@@ -59,6 +80,12 @@ public:
 
     // Record when the signal had been lost.
     std::chrono::time_point<std::chrono::steady_clock> signal_lost_time_;
+
+    std::atomic<uint64_t> last_decoded_frame_timestamp_ms_ = 0;
+    std::atomic<uint64_t> last_rtp_timestamp_ms_ = 0;
+    std::atomic<uint64_t> decoded_frame_count_ = 0;
+    uint64_t last_video_fps_frame_count_ = 0;
+    std::chrono::steady_clock::time_point last_video_fps_update_time_{};
 
     void show_red_tip(std::string tip);
 

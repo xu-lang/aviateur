@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <optional>
 
 #include "signal_quality.h"
 
@@ -75,6 +76,10 @@ public:
 
     std::array<int, ANTENNA_COUNT> get_link_score() const;
 
+    std::array<int, ANTENNA_COUNT> get_rssi() const;
+
+    std::array<int, ANTENNA_COUNT> get_snr() const;
+
     int get_packet_loss() const;
 
 protected:
@@ -92,6 +97,7 @@ protected:
     int socketFd = INVALID_SOCKET;
 
     bool first_rtp_packet_received = false;
+    std::optional<uint16_t> prev_rtp_seq_num_;
 
     /// Unique identifier for this link. Must match between transmitter and receiver.
     /// Use different values for separate links to avoid interference.
@@ -108,6 +114,8 @@ protected:
 
     std::shared_ptr<SignalQualityCalculator> signal_quality_calculator;
     std::array<int, ANTENNA_COUNT> link_score_ = {}; // Percentage
+    std::array<int, ANTENNA_COUNT> rssi_ = {};
+    std::array<int, ANTENNA_COUNT> snr_ = {};
     int packets_lost_ = 0;                           // Number over the last second
 
 #ifndef _WIN32

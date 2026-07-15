@@ -206,8 +206,17 @@ std::shared_ptr<AVFrame> FfmpegDecoder::GetNextFrame() {
 
             std::shared_ptr<AVFrame> pFrameVideo = std::shared_ptr<AVFrame>(av_frame_alloc(), &freeFrame);
 
+            const uint64_t decode_input_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                 std::chrono::system_clock::now().time_since_epoch())
+                                                 .count();
+            GuiInterface::Instance().EmitRtpTimestamp(decode_input_ms);
+
             if (bool successful = DecodeVideo(packet.get(), pFrameVideo)) {
                 res = pFrameVideo;
+                const uint64_t now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                            std::chrono::system_clock::now().time_since_epoch())
+                                            .count();
+                GuiInterface::Instance().EmitVideoFrameDecoded(now_ms);
             }
 
             timestamp->record("DecodeVideo");

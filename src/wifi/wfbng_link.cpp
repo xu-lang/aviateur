@@ -54,11 +54,10 @@ protected:
         }
 
         auto *header = (RtpHeader *)payload;
-        const uint16_t seq_num = htons(header->seq);
+        const uint16_t seq_num = ntohs(header->seq);
 
         GuiInterface::Instance().PutLog(LogLevel::Debug, "RTP sequence number: {}", seq_num);
         GuiInterface::Instance().PutLog(LogLevel::Debug, "RTP timestamp: {}", htonl(header->stamp));
-
         if (!prev_seq_num.has_value()) {
             // Check H264 or H265
             if (isH264(header->getPayloadData())) {
@@ -74,7 +73,9 @@ protected:
         }
 
         if (prev_seq_num.has_value() && seq_num - prev_seq_num.value() > 1) {
-            GuiInterface::Instance().PutLog(LogLevel::Info, "RTP packets lost: {}", seq_num - prev_seq_num.value() - 1);
+            const uint16_t lost = seq_num - prev_seq_num.value() - 1;
+            GuiInterface::Instance().rtpPktLostTotal_.fetch_add(lost, std::memory_order_relaxed);
+            GuiInterface::Instance().PutLog(LogLevel::Info, "RTP packets lost: {}", lost);
         }
         prev_seq_num = seq_num;
 
@@ -159,7 +160,13 @@ bool WfbngLink::start(const DeviceId &deviceId, uint8_t channel, int channelWidt
     GuiInterface::Instance().wifiFrameCount_ = 0;
     GuiInterface::Instance().wfbngFrameCount_ = 0;
     GuiInterface::Instance().rtpPktCount_ = 0;
+    GuiInterface::Instance().rtpPktLostTotal_.store(0, std::memory_order_relaxed);
+    GuiInterface::Instance().rtpLossStartTimestampMs_.store(
+        std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
+            .count(),
+        std::memory_order_relaxed);
     GuiInterface::Instance().UpdateCount();
+    prev_rtp_seq_num_.reset();
 
     keyPath = kPath;
 
@@ -657,6 +664,10 @@ void WfbngLink::handle_80211_frame(const Packet &packet) {
         const auto quality = signal_quality_calculator->calculate_signal_quality();
         link_score_[0] = quality.link_score[0];
         link_score_[1] = quality.link_score[1];
+        rssi_[0] = quality.rssi[0];
+        rssi_[1] = quality.rssi[1];
+        snr_[0] = quality.snr[0];
+        snr_[1] = quality.snr[1];
         packets_lost_ = quality.lost_last_second;
     }
     // MAVLink frame
@@ -688,6 +699,14 @@ std::array<int, ANTENNA_COUNT> WfbngLink::get_link_score() const {
     return link_score_;
 }
 
+std::array<int, ANTENNA_COUNT> WfbngLink::get_rssi() const {
+    return rssi_;
+}
+
+std::array<int, ANTENNA_COUNT> WfbngLink::get_snr() const {
+    return snr_;
+}
+
 int WfbngLink::get_packet_loss() const {
     return packets_lost_;
 }
@@ -710,6 +729,16 @@ void WfbngLink::handle_rtp(uint8_t *payload, uint16_t packet_size) {
     serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
     auto *header = (RtpHeader *)payload;
+    const uint16_t seq_num = ntohs(header->seq);
+    if (prev_rtp_seq_num_.has_value()) {
+        const uint16_t diff = seq_num - prev_rtp_seq_num_.value();
+        if (diff > 1 && diff < 0x8000) {
+            const uint16_t lost = diff - 1;
+            GuiInterface::Instance().rtpPktLostTotal_.fetch_add(lost, std::memory_order_relaxed);
+            GuiInterface::Instance().PutLog(LogLevel::Info, "RTP packets lost: {}", lost);
+        }
+    }
+    prev_rtp_seq_num_ = seq_num;
 
     if (!first_rtp_packet_received) {
         first_rtp_packet_received = true;

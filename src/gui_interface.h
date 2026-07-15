@@ -4,6 +4,7 @@
 #include <mini/ini.h>
 #include <servers/translation_server.h>
 
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <future>
@@ -527,6 +528,8 @@ public:
     long long wfbngFrameCount_ = 0;
     /// Number of received RTP packets
     long long rtpPktCount_ = 0;
+    std::atomic<long long> rtpPktLostTotal_ = 0;
+    std::atomic<uint64_t> rtpLossStartTimestampMs_ = 0;
 
     int playerPort = 0;
     std::string playerCodec;
@@ -568,6 +571,8 @@ public:
     std::vector<revector::AnyCallable<void>> rtpStreamCallbacks;
     std::vector<revector::AnyCallable<void>> bitrateUpdateCallbacks;
     std::vector<revector::AnyCallable<void>> decoderReadyCallbacks;
+    std::vector<revector::AnyCallable<void>> videoFrameDecodedCallbacks;
+    std::vector<revector::AnyCallable<void>> rtpTimestampCallbacks;
 
     std::vector<revector::AnyCallable<void>> urlStreamShouldStopCallbacks;
 
@@ -656,6 +661,26 @@ public:
                                                                             std::move(height),
                                                                             std::move(videoFps),
                                                                             std::move(decoder_name));
+            } catch (std::bad_any_cast &) {
+                Instance().PutLog(LogLevel::Error, "Mismatched signal argument types!");
+            }
+        }
+    }
+
+    void EmitVideoFrameDecoded(uint64_t timestampMs) {
+        for (auto &callback : videoFrameDecodedCallbacks) {
+            try {
+                callback.operator()<uint64_t>(std::move(timestampMs));
+            } catch (std::bad_any_cast &) {
+                Instance().PutLog(LogLevel::Error, "Mismatched signal argument types!");
+            }
+        }
+    }
+
+    void EmitRtpTimestamp(uint64_t timestampMs) {
+        for (auto &callback : rtpTimestampCallbacks) {
+            try {
+                callback.operator()<uint64_t>(std::move(timestampMs));
             } catch (std::bad_any_cast &) {
                 Instance().PutLog(LogLevel::Error, "Mismatched signal argument types!");
             }

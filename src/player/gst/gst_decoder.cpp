@@ -5,6 +5,8 @@
     #include <gst/app/gstappsink.h>
     #include <gst/gstsample.h>
 
+    #include <chrono>
+
     #include "src/gui_interface.h"
 
 static gboolean gst_bus_cb(GstBus *bus, GstMessage *msg, gpointer user_data) {
@@ -191,6 +193,11 @@ static GstFlowReturn on_new_sample_cb(GstAppSink *appsink, gpointer user_data) {
         dec->sample_ = sample;
         g_mutex_unlock(&dec->sample_mutex_);
     }
+
+    const uint64_t now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::system_clock::now().time_since_epoch())
+                                .count();
+    GuiInterface::Instance().EmitVideoFrameDecoded(now_ms);
 
     // Previous client sample is not used.
     if (prev_sample) {
