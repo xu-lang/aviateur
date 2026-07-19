@@ -217,6 +217,9 @@ std::shared_ptr<AVFrame> FfmpegDecoder::GetNextFrame() {
                                             std::chrono::system_clock::now().time_since_epoch())
                                             .count();
                 GuiInterface::Instance().EmitVideoFrameDecoded(now_ms);
+                if (decodedFrameRecordCallback) {
+                    decodedFrameRecordCallback(pFrameVideo);
+                }
             }
 
             timestamp->record("DecodeVideo");

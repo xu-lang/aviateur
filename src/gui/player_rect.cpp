@@ -3,11 +3,25 @@
 #include "../gui_interface.h"
 #include "src/player/ffmpeg/video_player.h"
 #include <fmt/format.h>
+#ifdef _WIN32
+    #include <windows.h>
+#endif
 #ifdef AVIATEUR_USE_GSTREAMER
     #include "src/player/gst/video_player.h"
 #endif
 
 constexpr uint32_t HUD_LABEL_FONT_SIZE = 20;
+
+double GetDisplayRefreshRateHz() {
+#ifdef _WIN32
+    DEVMODEA mode{};
+    mode.dmSize = sizeof(mode);
+    if (EnumDisplaySettingsA(nullptr, ENUM_CURRENT_SETTINGS, &mode) && mode.dmDisplayFrequency > 1) {
+        return static_cast<double>(mode.dmDisplayFrequency);
+    }
+#endif
+    return 60.0;
+}
 
 std::shared_ptr<revector::Label> MakeBarRowLabel(const std::string &text) {
     auto label = std::make_shared<revector::Label>();
@@ -215,6 +229,16 @@ void PlayerRect::custom_ready() {
     timestamp_overlay_label_->set_font_size(HUD_LABEL_FONT_SIZE);
     timestamp_overlay_label_->set_text("IN: ----ms F: ----ms R: ----ms");
     timestamp_overlay_label_->set_visibility(false);
+
+    clock_label_ = std::make_shared<revector::Label>();
+    add_child(clock_label_);
+    clock_label_->set_anchor_flag(revector::AnchorFlag::TopLeft);
+    clock_label_->set_custom_minimum_size({140, 28});
+    clock_label_->set_font_size(HUD_LABEL_FONT_SIZE);
+    clock_label_->theme_override_text_style = revector::TextStyle{revector::ColorU::white()};
+    clock_label_->set_text("CLK: ----ms");
+    clock_label_->set_visibility(true);
+    display_refresh_rate_hz_ = GetDisplayRefreshRateHz();
 
     signal_metrics_overlay_ = std::make_shared<SignalMetricsOverlay>();
     add_child(signal_metrics_overlay_);
@@ -698,6 +722,23 @@ void PlayerRect::custom_update(double dt) {
 }
 
 void PlayerRect::custom_draw() {
+    const auto now = std::chrono::steady_clock::now();
+    const double refresh_interval = 1.0 / display_refresh_rate_hz_;
+    const bool should_update_clock = next_clock_update_time_ == std::chrono::steady_clock::time_point{} ||
+                                     now >= next_clock_update_time_;
+    if (should_update_clock) {
+        next_clock_update_time_ = now + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                                            std::chrono::duration<double>(refresh_interval));
+
+        const uint64_t draw_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                     std::chrono::system_clock::now().time_since_epoch())
+                                     .count();
+
+        const auto sync_requests = GuiInterface::Instance().timeSyncRequestCount_.load(std::memory_order_relaxed);
+        clock_label_->set_text(
+            fmt::format("CLK: {:04}ms {:.0f}Hz TS: {}", draw_ms % 10000, display_refresh_rate_hz_, sync_requests));
+    }
+
     if (!playing_) {
         return;
     }

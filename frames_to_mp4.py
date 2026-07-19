@@ -55,18 +55,14 @@ def drawbox_filter(rows, size):
     return f"drawbox=x=0:y=0:w={size}:h={size}:color=green@0.9:t=fill:enable='{enable}'"
 
 
-def run_ffmpeg(ffmpeg, input_path, rows, output_path, fps, box_size):
+def run_ffmpeg(ffmpeg, input_path, rows, output_path, fps, box_size, rawvideo_args=None):
     filter_text = drawbox_filter(rows, box_size)
-    cmd = [
-        ffmpeg,
-        "-y",
-        "-fflags",
-        "+genpts",
-        "-r",
-        str(fps),
-        "-i",
-        str(input_path),
-    ]
+    cmd = [ffmpeg, "-y", "-fflags", "+genpts", "-r", str(fps)]
+
+    if rawvideo_args:
+        cmd += rawvideo_args
+
+    cmd += ["-i", str(input_path)]
 
     if filter_text:
         cmd += ["-vf", filter_text]
@@ -76,10 +72,10 @@ def run_ffmpeg(ffmpeg, input_path, rows, output_path, fps, box_size):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Convert recorded frames.h265/frames.h264 to MP4 with LED overlay.")
-    parser.add_argument("input_dir", nargs="?", default=".", help="Directory containing frames.tsv and frames.h265/h264")
+    parser = argparse.ArgumentParser(description="Convert recorded frames to MP4 with LED overlay.")
+    parser.add_argument("input_dir", nargs="?", default=".", help="Directory containing frames.tsv and frames.*")
     parser.add_argument("-o", "--output", default="out.mp4", help="Output MP4 path")
-    parser.add_argument("--codec", choices=("h264", "h265"), default="h265", help="Recorded stream codec")
+    parser.add_argument("--codec", choices=("h264", "h265", "raw"), default=None, help="Recorded stream codec")
     parser.add_argument("--fps", type=float, default=30.0, help="Output frame rate")
     parser.add_argument("--box-size", type=int, default=80, help="LED marker box size in pixels")
     parser.add_argument("--ffmpeg", default="ffmpeg", help="ffmpeg executable")
@@ -89,14 +85,40 @@ def main():
         raise SystemExit(f"ffmpeg not found: {args.ffmpeg}")
 
     input_dir = Path(args.input_dir)
-    input_path = input_dir / ("frames.h265" if args.codec == "h265" else "frames.h264")
     tsv_path = input_dir / "frames.tsv"
+    rows = read_tsv(tsv_path)
+
+    codec = args.codec
+    if codec is None:
+        if (input_dir / "frames.yuv").exists():
+            codec = "raw"
+        elif (input_dir / "frames.h265").exists():
+            codec = "h265"
+        else:
+            codec = "h264"
+
+    rawvideo_args = None
+    if codec == "raw":
+        input_path = input_dir / "frames.yuv"
+        first = rows[0] if rows else {}
+        missing = {"width", "height", "pix_fmt"} - set(first)
+        if missing:
+            raise SystemExit(f"raw frames.tsv is missing columns: {', '.join(sorted(missing))}")
+        rawvideo_args = [
+            "-f",
+            "rawvideo",
+            "-pix_fmt",
+            first["pix_fmt"],
+            "-s",
+            f"{first['width']}x{first['height']}",
+        ]
+    else:
+        input_path = input_dir / ("frames.h265" if codec == "h265" else "frames.h264")
 
     if not input_path.exists():
         raise SystemExit(f"missing stream file: {input_path}")
 
-    rows = read_tsv(tsv_path)
-    run_ffmpeg(args.ffmpeg, input_path, rows, Path(args.output), args.fps, args.box_size)
+    run_ffmpeg(args.ffmpeg, input_path, rows, Path(args.output), args.fps, args.box_size, rawvideo_args)
     print(f"Wrote {args.output}")
 
 

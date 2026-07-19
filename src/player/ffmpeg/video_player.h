@@ -3,6 +3,7 @@
 #include <common/any_callable.h>
 
 #include <memory>
+#include <fstream>
 #include <queue>
 #include <thread>
 
@@ -63,9 +64,21 @@ protected:
 
     void disableAudio();
 
+    void start_local_decoded_frame_recording();
+
+    void stop_local_decoded_frame_recording();
+
+    void record_local_decoded_frame(const std::shared_ptr<AVFrame> &frame);
+
     std::shared_ptr<Mp4Encoder> mp4Encoder_;
 
     std::shared_ptr<GifEncoder> gifEncoder_;
+
+    std::ofstream localDecodedFrameTsv_;
+    std::ofstream localDecodedFrameStream_;
+    uint64_t localDecodedFrameIndex_ = 0;
+    uint64_t localDecodedFrameOffset_ = 0;
+    bool localDecodedFrameRecording_ = false;
 
     bool hasAudio() const;
 };

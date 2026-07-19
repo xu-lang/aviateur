@@ -13,6 +13,7 @@ extern "C" {
 #include <libavformat/avformat.h>
 #include <libavutil/fifo.h>
 #include <libavutil/imgutils.h>
+#include <libavutil/pixdesc.h>
 #include <libswresample/swresample.h>
 #include <libswscale/swscale.h>
 }

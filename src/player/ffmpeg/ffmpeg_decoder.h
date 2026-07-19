@@ -102,6 +102,8 @@ private:
     /// NALU callback (video/audio)
     std::function<void(const std::shared_ptr<AVPacket> &packet)> gotPktCallback;
 
+    std::function<void(const std::shared_ptr<AVFrame> &frame)> decodedFrameRecordCallback;
+
     std::function<void(const std::shared_ptr<AVFrame> &frame)> gotVideoFrameCallback;
 
     bool createHwCtx(AVCodecContext *ctx, enum AVHWDeviceType type);

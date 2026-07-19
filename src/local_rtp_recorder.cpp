@@ -35,6 +35,14 @@ void CloseSocket(NativeSocket sock) {
 #endif
 }
 
+bool IsInvalidSocket(NativeSocket sock) {
+#ifdef _WIN32
+    return sock == INVALID_SOCKET;
+#else
+    return sock < 0;
+#endif
+}
+
 bool EnsureWinsockStarted() {
 #ifdef _WIN32
     static std::once_flag once;
@@ -157,29 +165,17 @@ void LocalRtpRecorder::run(int listen_port, int forward_port, std::string codec)
     output_offset_ = 0;
     tsv_ << "frame_index\treceived_ms\trtp_timestamp\tlast_seq\tpacket_count\tled_on\toffset\tbytes\n";
 
+    const bool forwarding_enabled = forward_port > 0;
     const NativeSocket recv_sock = socket(AF_INET, SOCK_DGRAM, 0);
-    const NativeSocket send_sock = socket(AF_INET, SOCK_DGRAM, 0);
-#ifdef _WIN32
-    if (recv_sock == INVALID_SOCKET || send_sock == INVALID_SOCKET) {
-#else
-    if (recv_sock < 0 || send_sock < 0) {
-#endif
+    const NativeSocket send_sock = forwarding_enabled ? socket(AF_INET, SOCK_DGRAM, 0) : NativeSocket{};
+    if (IsInvalidSocket(recv_sock) || (forwarding_enabled && IsInvalidSocket(send_sock))) {
         GuiInterface::Instance().PutLog(LogLevel::Error, "Raw RTP recorder socket creation failed");
-#ifdef _WIN32
-        if (recv_sock != INVALID_SOCKET) {
+        if (!IsInvalidSocket(recv_sock)) {
             CloseSocket(recv_sock);
         }
-        if (send_sock != INVALID_SOCKET) {
+        if (forwarding_enabled && !IsInvalidSocket(send_sock)) {
             CloseSocket(send_sock);
         }
-#else
-        if (recv_sock >= 0) {
-            CloseSocket(recv_sock);
-        }
-        if (send_sock >= 0) {
-            CloseSocket(send_sock);
-        }
-#endif
         running_.store(false, std::memory_order_relaxed);
         {
             std::lock_guard lock(start_mutex_);
@@ -227,14 +223,18 @@ void LocalRtpRecorder::run(int listen_port, int forward_port, std::string codec)
     start_cv_.notify_one();
 
     sockaddr_in forward_addr{};
-    forward_addr.sin_family = AF_INET;
-    forward_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-    forward_addr.sin_port = htons(forward_port);
+    if (forwarding_enabled) {
+        forward_addr.sin_family = AF_INET;
+        forward_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+        forward_addr.sin_port = htons(forward_port);
 
-    GuiInterface::Instance().PutLog(LogLevel::Info,
-                                    "Raw RTP recorder listening on {}, forwarding to {}",
-                                    listen_port,
-                                    forward_port);
+        GuiInterface::Instance().PutLog(LogLevel::Info,
+                                        "Raw RTP recorder listening on {}, forwarding to {}",
+                                        listen_port,
+                                        forward_port);
+    } else {
+        GuiInterface::Instance().PutLog(LogLevel::Info, "Raw RTP recorder listening on {} without forwarding", listen_port);
+    }
 
     while (running_.load(std::memory_order_relaxed)) {
         uint8_t buffer[65536]{};
@@ -243,12 +243,14 @@ void LocalRtpRecorder::run(int listen_port, int forward_port, std::string codec)
             continue;
         }
 
-        sendto(send_sock,
-               reinterpret_cast<const char *>(buffer),
-               received,
-               0,
-               reinterpret_cast<sockaddr *>(&forward_addr),
-               sizeof(forward_addr));
+        if (forwarding_enabled) {
+            sendto(send_sock,
+                   reinterpret_cast<const char *>(buffer),
+                   received,
+                   0,
+                   reinterpret_cast<sockaddr *>(&forward_addr),
+                   sizeof(forward_addr));
+        }
 
         if (received < 12) {
             continue;
@@ -270,7 +272,9 @@ void LocalRtpRecorder::run(int listen_port, int forward_port, std::string codec)
     if (still_owned_recv_socket != 0) {
         CloseSocket(static_cast<NativeSocket>(still_owned_recv_socket));
     }
-    CloseSocket(send_sock);
+    if (forwarding_enabled) {
+        CloseSocket(send_sock);
+    }
 }
 
 void LocalRtpRecorder::process_rtp_packet(const uint8_t *packet, int packet_size) {
@@ -413,7 +417,11 @@ void LocalRtpRecorder::flush_frame(uint32_t rtp_timestamp, uint16_t last_seq, ui
     output_offset_ += frame_data_.size();
 
     const int led_on = GuiInterface::Instance().led_on_.load(std::memory_order_relaxed) ? 1 : 0;
-    tsv_ << frame_index_ << '\t' << received_ms << '\t' << rtp_timestamp << '\t' << last_seq << '\t'
+    const uint64_t frame_index = GuiInterface::Instance().local_rtp_frame_index_source_ ==
+            LocalRtpFrameIndexSource::DecodedFrame
+        ? GuiInterface::Instance().decodedFrameCount_.load(std::memory_order_relaxed)
+        : frame_index_;
+    tsv_ << frame_index << '\t' << received_ms << '\t' << rtp_timestamp << '\t' << last_seq << '\t'
          << frame_packet_count_ << '\t' << led_on << '\t' << frame_offset << '\t' << frame_data_.size() << '\n';
     tsv_.flush();
 

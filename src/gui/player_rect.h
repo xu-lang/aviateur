@@ -39,6 +39,8 @@ public:
 
     std::shared_ptr<revector::Label> timestamp_overlay_label_;
 
+    std::shared_ptr<revector::Label> clock_label_;
+
     std::shared_ptr<SignalMetricsOverlay> signal_metrics_overlay_;
 
     std::shared_ptr<revector::Label> record_status_label_;
@@ -86,6 +88,8 @@ public:
     std::atomic<uint64_t> decoded_frame_count_ = 0;
     uint64_t last_video_fps_frame_count_ = 0;
     std::chrono::steady_clock::time_point last_video_fps_update_time_{};
+    double display_refresh_rate_hz_ = 60.0;
+    std::chrono::steady_clock::time_point next_clock_update_time_{};
 
     void show_red_tip(std::string tip);
 

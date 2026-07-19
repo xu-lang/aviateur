@@ -31,6 +31,7 @@ public:
 
     std::shared_ptr<revector::Button> play_port_button_;
     std::shared_ptr<revector::CheckButton> record_raw_rtp_button_;
+    std::shared_ptr<revector::ToggleButtonGroup> frame_index_source_button_group_;
     std::shared_ptr<revector::TextEdit> local_listener_port_edit_;
     std::string local_listener_codec;
 

@@ -556,6 +556,52 @@ void ControlPanel::custom_ready() {
         }
 
         {
+            auto hbox_container = std::make_shared<revector::HBoxContainer>();
+            hbox_container->set_separation(8);
+            vbox_blockable->add_child(hbox_container);
+
+            auto label = std::make_shared<revector::Label>();
+            label->set_text("frame index");
+            hbox_container->add_child(label);
+
+            auto vbox_container = std::make_shared<revector::VBoxContainer>();
+            vbox_container->container_sizing.flag_h = revector::ContainerSizingFlag::Fill;
+            hbox_container->add_child(vbox_container);
+
+            frame_index_source_button_group_ = std::make_shared<revector::ToggleButtonGroup>();
+
+            {
+                auto rtp_btn = std::make_shared<revector::RadioButton>();
+                rtp_btn->set_text("RTP received");
+                rtp_btn->container_sizing.flag_h = revector::ContainerSizingFlag::Fill;
+                vbox_container->add_child(rtp_btn);
+                rtp_btn->set_toggled_no_signal(GuiInterface::Instance().local_rtp_frame_index_source_ ==
+                                               LocalRtpFrameIndexSource::RtpFrame);
+                rtp_btn->connect_signal("toggled", [](bool toggled) {
+                    if (toggled) {
+                        GuiInterface::Instance().local_rtp_frame_index_source_ = LocalRtpFrameIndexSource::RtpFrame;
+                    }
+                });
+                frame_index_source_button_group_->add_button(rtp_btn);
+            }
+
+            {
+                auto decoded_btn = std::make_shared<revector::RadioButton>();
+                decoded_btn->set_text("frame decoded");
+                decoded_btn->container_sizing.flag_h = revector::ContainerSizingFlag::Fill;
+                vbox_container->add_child(decoded_btn);
+                decoded_btn->set_toggled_no_signal(GuiInterface::Instance().local_rtp_frame_index_source_ ==
+                                                   LocalRtpFrameIndexSource::DecodedFrame);
+                decoded_btn->connect_signal("toggled", [](bool toggled) {
+                    if (toggled) {
+                        GuiInterface::Instance().local_rtp_frame_index_source_ = LocalRtpFrameIndexSource::DecodedFrame;
+                    }
+                });
+                frame_index_source_button_group_->add_button(decoded_btn);
+            }
+        }
+
+        {
             play_port_button_ = std::make_shared<revector::Button>();
             play_port_button_->set_custom_minimum_size({0, 48});
             play_port_button_->container_sizing.flag_h = revector::ContainerSizingFlag::Fill;
@@ -569,14 +615,19 @@ void ControlPanel::custom_ready() {
                 if (start) {
                     std::string port = local_listener_port_edit_->get_text();
                     int play_port = std::stoi(port);
+                    GuiInterface::Instance().decodedFrameCount_.store(0, std::memory_order_relaxed);
                     if (GuiInterface::Instance().local_rtp_record_raw_) {
-                        const int forward_port = GuiInterface::GetFreePort(play_port + 1);
-                        GuiInterface::Instance().local_rtp_recorder_ = std::make_unique<LocalRtpRecorder>();
-                        if (GuiInterface::Instance().local_rtp_recorder_->start(
-                                play_port, forward_port, GuiInterface::Instance().rtp_codec_)) {
-                            play_port = forward_port;
-                        } else {
-                            GuiInterface::Instance().local_rtp_recorder_.reset();
+                        const bool forward_rtp = GuiInterface::Instance().local_rtp_frame_index_source_ ==
+                            LocalRtpFrameIndexSource::RtpFrame;
+                        if (forward_rtp) {
+                            const int forward_port = GuiInterface::GetFreePort(play_port + 1);
+                            GuiInterface::Instance().local_rtp_recorder_ = std::make_unique<LocalRtpRecorder>();
+                            if (GuiInterface::Instance().local_rtp_recorder_->start(
+                                    play_port, forward_port, GuiInterface::Instance().rtp_codec_)) {
+                                play_port = forward_port;
+                            } else {
+                                GuiInterface::Instance().local_rtp_recorder_.reset();
+                            }
                         }
                     }
 

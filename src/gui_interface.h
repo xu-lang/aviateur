@@ -56,6 +56,8 @@ const revector::ColorU GREEN = revector::ColorU(78, 135, 82);
 const revector::ColorU RED = revector::ColorU(201, 79, 79);
 const revector::ColorU YELLOW = revector::ColorU(255, 201, 14);
 
+enum class LocalRtpFrameIndexSource { RtpFrame, DecodedFrame };
+
 const std::map<int, std::string> CHANNELS = {
     // 2.4GHz
     {1, "2412 MHz [1]"},
@@ -534,6 +536,7 @@ public:
     std::atomic<uint64_t> rtpLossStartTimestampMs_ = 0;
     std::atomic<uint64_t> timeSyncRequestCount_ = 0;
     std::atomic<bool> led_on_ = false;
+    std::atomic<uint64_t> decodedFrameCount_ = 0;
 
     int playerPort = 0;
     std::string playerCodec;
@@ -541,6 +544,7 @@ public:
     // Local RTP listener
     std::string rtp_codec_;
     bool local_rtp_record_raw_ = false;
+    LocalRtpFrameIndexSource local_rtp_frame_index_source_ = LocalRtpFrameIndexSource::RtpFrame;
     std::unique_ptr<LocalRtpRecorder> local_rtp_recorder_;
 
     bool dark_mode_ = false;
@@ -674,6 +678,7 @@ public:
     }
 
     void EmitVideoFrameDecoded(uint64_t timestampMs) {
+        decodedFrameCount_.fetch_add(1, std::memory_order_relaxed);
         for (auto &callback : videoFrameDecodedCallbacks) {
             try {
                 callback.operator()<uint64_t>(std::move(timestampMs));
