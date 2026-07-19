@@ -8,9 +8,216 @@
 #include "gui_interface.h"
 #include "wifi/wfbng_link.h"
 
+#include <atomic>
+#include <chrono>
+#include <cstring>
+#include <mutex>
+#include <thread>
+
+#ifdef _WIN32
+    #include <winsock2.h>
+#else
+    #include <arpa/inet.h>
+    #include <sys/socket.h>
+    #include <unistd.h>
+#endif
+
+namespace {
+
+constexpr uint16_t TSYNC_PORT = 5602;
+
+uint64_t NowMs() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
+        .count();
+}
+
+class TimeSyncServer {
+public:
+    void start() {
+        running_.store(true, std::memory_order_relaxed);
+        thread_ = std::thread([this] { run(); });
+        led_thread_ = std::thread([this] { run_led_control(); });
+    }
+
+    void stop() {
+        running_.store(false, std::memory_order_relaxed);
+        if (thread_.joinable()) {
+            thread_.join();
+        }
+        if (led_thread_.joinable()) {
+            led_thread_.join();
+        }
+    }
+
+private:
+    struct Response {
+        char magic[4];
+        uint64_t t1;
+        uint64_t t2;
+        uint64_t t3;
+    };
+
+    void run() {
+#ifdef _WIN32
+        WSADATA wsa_data;
+        if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
+            GuiInterface::Instance().PutLog(LogLevel::Error, "Time sync WSAStartup failed");
+            return;
+        }
+#endif
+
+        const auto sock = socket(AF_INET, SOCK_DGRAM, 0);
+        if (sock < 0) {
+            GuiInterface::Instance().PutLog(LogLevel::Error, "Time sync socket creation failed");
+#ifdef _WIN32
+            WSACleanup();
+#endif
+            return;
+        }
+
+        int reuse = 1;
+        setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char *>(&reuse), sizeof(reuse));
+
+        timeval timeout{};
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 500000;
+        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char *>(&timeout), sizeof(timeout));
+
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(TSYNC_PORT);
+        addr.sin_addr.s_addr = INADDR_ANY;
+
+        if (bind(sock, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) < 0) {
+            GuiInterface::Instance().PutLog(LogLevel::Error, "Time sync bind failed on UDP port {}", TSYNC_PORT);
+            close_socket(sock);
+#ifdef _WIN32
+            WSACleanup();
+#endif
+            return;
+        }
+
+        GuiInterface::Instance().PutLog(LogLevel::Info, "Time sync server listening on UDP port {}", TSYNC_PORT);
+
+        while (running_.load(std::memory_order_relaxed)) {
+            char buffer[1024]{};
+            sockaddr_in peer{};
+#ifdef _WIN32
+            int peer_len = sizeof(peer);
+#else
+            socklen_t peer_len = sizeof(peer);
+#endif
+            const int received = recvfrom(sock, buffer, sizeof(buffer), 0, reinterpret_cast<sockaddr *>(&peer), &peer_len);
+            if (received < 12 || std::memcmp(buffer, "PSYN", 4) != 0) {
+                continue;
+            }
+            GuiInterface::Instance().timeSyncRequestCount_.fetch_add(1, std::memory_order_relaxed);
+
+            {
+                std::lock_guard lock(peer_mutex_);
+                last_peer_ = peer;
+                has_peer_ = true;
+            }
+
+            Response response{};
+            std::memcpy(response.magic, "PSYN", 4);
+            std::memcpy(&response.t1, buffer + 4, sizeof(response.t1));
+            response.t2 = NowMs();
+            response.t3 = NowMs();
+            sendto(sock,
+                   reinterpret_cast<const char *>(&response),
+                   sizeof(response),
+                   0,
+                   reinterpret_cast<sockaddr *>(&peer),
+                   peer_len);
+        }
+
+        close_socket(sock);
+#ifdef _WIN32
+        WSACleanup();
+#endif
+    }
+
+    static void close_socket(int sock) {
+#ifdef _WIN32
+        closesocket(sock);
+#else
+        close(sock);
+#endif
+    }
+
+    void run_led_control() {
+#ifdef _WIN32
+        WSADATA wsa_data;
+        if (WSAStartup(MAKEWORD(2, 2), &wsa_data) != 0) {
+            GuiInterface::Instance().PutLog(LogLevel::Error, "LED control WSAStartup failed");
+            return;
+        }
+#endif
+
+        const auto sock = socket(AF_INET, SOCK_DGRAM, 0);
+        if (sock < 0) {
+            GuiInterface::Instance().PutLog(LogLevel::Error, "LED control socket creation failed");
+#ifdef _WIN32
+            WSACleanup();
+#endif
+            return;
+        }
+
+        GuiInterface::Instance().PutLog(LogLevel::Info, "LED control sending to last time sync source endpoint");
+
+        bool led_on = false;
+        auto next_tick = std::chrono::steady_clock::now();
+        while (running_.load(std::memory_order_relaxed)) {
+            sockaddr_in peer{};
+            bool has_peer = false;
+            {
+                std::lock_guard lock(peer_mutex_);
+                has_peer = has_peer_;
+                peer = last_peer_;
+            }
+
+            if (has_peer) {
+                const uint8_t value = led_on ? 1 : 0;
+                GuiInterface::Instance().led_on_.store(led_on, std::memory_order_relaxed);
+                sendto(sock,
+                       reinterpret_cast<const char *>(&value),
+                       sizeof(value),
+                       0,
+                       reinterpret_cast<sockaddr *>(&peer),
+                       sizeof(peer));
+                led_on = !led_on;
+            }
+
+            next_tick += std::chrono::milliseconds(500);
+            std::this_thread::sleep_until(next_tick);
+            if (std::chrono::steady_clock::now() > next_tick + std::chrono::milliseconds(500)) {
+                next_tick = std::chrono::steady_clock::now();
+            }
+        }
+
+        close_socket(sock);
+#ifdef _WIN32
+        WSACleanup();
+#endif
+    }
+
+    std::atomic<bool> running_ = false;
+    std::thread thread_;
+    std::thread led_thread_;
+    std::mutex peer_mutex_;
+    sockaddr_in last_peer_{};
+    bool has_peer_ = false;
+};
+
+} // namespace
+
 int main() {
     GuiInterface::Instance().init();
     GuiInterface::Instance().PutLog(LogLevel::Info, "App started");
+
+    TimeSyncServer time_sync_server;
+    time_sync_server.start();
 
     auto app = std::make_shared<revector::App>(revector::Vec2I{1280, 720},
                                                GuiInterface::Instance().dark_mode_,
@@ -82,6 +289,8 @@ int main() {
     GuiInterface::Instance().PutLog(LogLevel::Info, "Entering app main loop");
 
     app->main_loop();
+
+    time_sync_server.stop();
 
     GuiInterface::SaveConfig();
 

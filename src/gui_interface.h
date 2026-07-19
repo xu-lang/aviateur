@@ -9,6 +9,7 @@
 #include <fstream>
 #include <future>
 #include <fmt/format.h>
+#include <memory>
 #include <nlohmann/json.hpp>
 
 #ifdef __linux__
@@ -17,6 +18,7 @@
 #endif
 
 #include "app.h"
+#include "local_rtp_recorder.h"
 #include "wifi/wfbng_link.h"
 
 #define CONFIG_FILE "config.ini"
@@ -530,12 +532,16 @@ public:
     long long rtpPktCount_ = 0;
     std::atomic<long long> rtpPktLostTotal_ = 0;
     std::atomic<uint64_t> rtpLossStartTimestampMs_ = 0;
+    std::atomic<uint64_t> timeSyncRequestCount_ = 0;
+    std::atomic<bool> led_on_ = false;
 
     int playerPort = 0;
     std::string playerCodec;
 
     // Local RTP listener
     std::string rtp_codec_;
+    bool local_rtp_record_raw_ = false;
+    std::unique_ptr<LocalRtpRecorder> local_rtp_recorder_;
 
     bool dark_mode_ = false;
 

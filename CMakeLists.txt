@@ -87,6 +87,7 @@ if (APPLE)
 else ()
     add_executable(${PROJECT_NAME}
             src/main.cpp
+            src/local_rtp_recorder.cpp
             src/gui_interface.h
     )
 endif ()

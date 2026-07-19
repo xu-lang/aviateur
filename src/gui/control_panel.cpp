@@ -547,6 +547,15 @@ void ControlPanel::custom_ready() {
         }
 
         {
+            record_raw_rtp_button_ = std::make_shared<revector::CheckButton>();
+            record_raw_rtp_button_->set_text("record raw RTP");
+            record_raw_rtp_button_->connect_signal("toggled", [](bool toggled) {
+                GuiInterface::Instance().local_rtp_record_raw_ = toggled;
+            });
+            vbox_blockable->add_child(record_raw_rtp_button_);
+        }
+
+        {
             play_port_button_ = std::make_shared<revector::Button>();
             play_port_button_->set_custom_minimum_size({0, 48});
             play_port_button_->container_sizing.flag_h = revector::ContainerSizingFlag::Fill;
@@ -559,21 +568,36 @@ void ControlPanel::custom_ready() {
 
                 if (start) {
                     std::string port = local_listener_port_edit_->get_text();
+                    int play_port = std::stoi(port);
+                    if (GuiInterface::Instance().local_rtp_record_raw_) {
+                        const int forward_port = GuiInterface::GetFreePort(play_port + 1);
+                        GuiInterface::Instance().local_rtp_recorder_ = std::make_unique<LocalRtpRecorder>();
+                        if (GuiInterface::Instance().local_rtp_recorder_->start(
+                                play_port, forward_port, GuiInterface::Instance().rtp_codec_)) {
+                            play_port = forward_port;
+                        } else {
+                            GuiInterface::Instance().local_rtp_recorder_.reset();
+                        }
+                    }
 
                     if (GuiInterface::Instance().use_gstreamer_) {
-                        GuiInterface::Instance().EmitRtpStream("udp://0.0.0.0:" + port);
+                        GuiInterface::Instance().EmitRtpStream("udp://0.0.0.0:" + std::to_string(play_port));
                     } else {
                         GuiInterface::Instance().NotifyRtpStream(97,
-                                                                  0,
-                                                                  std::stoi(port),
-                                                                  GuiInterface::Instance().rtp_codec_,
-                                                                  "0.0.0.0");
+                                                                   0,
+                                                                   play_port,
+                                                                   GuiInterface::Instance().rtp_codec_,
+                                                                   "0.0.0.0");
                     }
 
                     GuiInterface::Instance().ini_[CONFIG_LOCALHOST][CONFIG_LOCALHOST_PORT] = port;
 
                     udp_prop_block_->set_visibility(true);
                 } else {
+                    if (GuiInterface::Instance().local_rtp_recorder_) {
+                        GuiInterface::Instance().local_rtp_recorder_->stop();
+                        GuiInterface::Instance().local_rtp_recorder_.reset();
+                    }
                     GuiInterface::Instance().EmitUrlStreamShouldStop();
 
                     udp_prop_block_->set_visibility(false);
