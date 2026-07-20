@@ -102,6 +102,7 @@ void VideoPlayerGst::update(float dt) {
 
 void VideoPlayerGst::render(std::shared_ptr<Pathfinder::Texture> target) {
     yuvRenderer_->render(target);
+    GuiInterface::Instance().renderedFrameCount_.fetch_add(1, std::memory_order_relaxed);
 }
 
 void VideoPlayerGst::play(const std::string &playUrl, bool forceSoftwareDecoding) {

@@ -40,6 +40,12 @@ void VideoPlayerFfmpeg::update(float dt) {
 
 void VideoPlayerFfmpeg::render(std::shared_ptr<Pathfinder::Texture> target) {
     yuvRenderer_->render(target);
+    GuiInterface::Instance().renderedFrameCount_.fetch_add(1, std::memory_order_relaxed);
+
+    if (GuiInterface::Instance().local_rtp_record_raw_ &&
+        GuiInterface::Instance().local_rtp_frame_index_source_ == LocalRtpFrameIndexSource::RenderedFrame) {
+        record_local_decoded_frame(lastFrame_);
+    }
 }
 
 std::shared_ptr<AVFrame> VideoPlayerFfmpeg::getFrame() {
@@ -99,7 +105,7 @@ void VideoPlayerFfmpeg::play(const std::string &playUrl, bool forceSoftwareDecod
         }
 
         if (GuiInterface::Instance().local_rtp_record_raw_ &&
-            GuiInterface::Instance().local_rtp_frame_index_source_ == LocalRtpFrameIndexSource::DecodedFrame) {
+            GuiInterface::Instance().local_rtp_frame_index_source_ != LocalRtpFrameIndexSource::RtpFrame) {
             start_local_decoded_frame_recording();
         }
 
@@ -203,7 +209,7 @@ void VideoPlayerFfmpeg::start_local_decoded_frame_recording() {
     localDecodedFrameTsv_ << "frame_index\treceived_ms\trtp_timestamp\tlast_seq\tpacket_count\tled_on\toffset\tbytes\twidth\theight\tpix_fmt\n";
     localDecodedFrameRecording_ = localDecodedFrameTsv_.is_open() && localDecodedFrameStream_.is_open();
 
-    if (decoder) {
+    if (decoder && GuiInterface::Instance().local_rtp_frame_index_source_ == LocalRtpFrameIndexSource::DecodedFrame) {
         decoder->decodedFrameRecordCallback = [this](const std::shared_ptr<AVFrame> &frame) {
             record_local_decoded_frame(frame);
         };
@@ -265,9 +271,14 @@ void VideoPlayerFfmpeg::record_local_decoded_frame(const std::shared_ptr<AVFrame
     localDecodedFrameOffset_ += frame_data.size();
 
     const int led_on = GuiInterface::Instance().led_on_.load(std::memory_order_relaxed) ? 1 : 0;
-    localDecodedFrameTsv_ << localDecodedFrameIndex_ << '\t' << received_ms << '\t' << 0 << '\t' << 0 << '\t' << 1
-                          << '\t' << led_on << '\t' << frame_offset << '\t' << frame_data.size() << '\t'
-                          << frame->width << '\t' << frame->height << '\t' << av_get_pix_fmt_name(pix_fmt) << '\n';
+    uint64_t frame_index = localDecodedFrameIndex_;
+    if (GuiInterface::Instance().local_rtp_frame_index_source_ == LocalRtpFrameIndexSource::RenderedFrame) {
+        frame_index = GuiInterface::Instance().renderedFrameCount_.load(std::memory_order_relaxed);
+    }
+
+    localDecodedFrameTsv_ << frame_index << '\t' << received_ms << '\t' << 0 << '\t' << 0 << '\t' << 1
+                           << '\t' << led_on << '\t' << frame_offset << '\t' << frame_data.size() << '\t'
+                           << frame->width << '\t' << frame->height << '\t' << av_get_pix_fmt_name(pix_fmt) << '\n';
     localDecodedFrameTsv_.flush();
     localDecodedFrameIndex_++;
 }

@@ -424,10 +424,12 @@ void LocalRtpRecorder::flush_frame(uint32_t rtp_timestamp, uint16_t last_seq, ui
     output_offset_ += frame_data_.size();
 
     const int led_on = GuiInterface::Instance().led_on_.load(std::memory_order_relaxed) ? 1 : 0;
-    const uint64_t frame_index = GuiInterface::Instance().local_rtp_frame_index_source_ ==
-            LocalRtpFrameIndexSource::DecodedFrame
-        ? GuiInterface::Instance().decodedFrameCount_.load(std::memory_order_relaxed)
-        : frame_index_;
+    uint64_t frame_index = frame_index_;
+    if (GuiInterface::Instance().local_rtp_frame_index_source_ == LocalRtpFrameIndexSource::DecodedFrame) {
+        frame_index = GuiInterface::Instance().decodedFrameCount_.load(std::memory_order_relaxed);
+    } else if (GuiInterface::Instance().local_rtp_frame_index_source_ == LocalRtpFrameIndexSource::RenderedFrame) {
+        frame_index = GuiInterface::Instance().renderedFrameCount_.load(std::memory_order_relaxed);
+    }
     tsv_ << frame_index << '\t' << received_ms << '\t' << rtp_timestamp << '\t' << last_seq << '\t'
          << frame_packet_count_ << '\t' << led_on << '\t' << frame_offset << '\t' << frame_data_.size() << '\n';
     tsv_.flush();

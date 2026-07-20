@@ -643,6 +643,21 @@ void ControlPanel::custom_ready() {
                 });
                 frame_index_source_button_group_->add_button(decoded_btn);
             }
+
+            {
+                auto rendered_btn = std::make_shared<revector::RadioButton>();
+                rendered_btn->set_text("frame rendered");
+                rendered_btn->container_sizing.flag_h = revector::ContainerSizingFlag::Fill;
+                vbox_container->add_child(rendered_btn);
+                rendered_btn->set_toggled_no_signal(GuiInterface::Instance().local_rtp_frame_index_source_ ==
+                                                     LocalRtpFrameIndexSource::RenderedFrame);
+                rendered_btn->connect_signal("toggled", [](bool toggled) {
+                    if (toggled) {
+                        GuiInterface::Instance().local_rtp_frame_index_source_ = LocalRtpFrameIndexSource::RenderedFrame;
+                    }
+                });
+                frame_index_source_button_group_->add_button(rendered_btn);
+            }
         }
 
         {
@@ -660,6 +675,7 @@ void ControlPanel::custom_ready() {
                     std::string port = local_listener_port_edit_->get_text();
                     int play_port = std::stoi(port);
                     GuiInterface::Instance().decodedFrameCount_.store(0, std::memory_order_relaxed);
+                    GuiInterface::Instance().renderedFrameCount_.store(0, std::memory_order_relaxed);
                     if (GuiInterface::Instance().local_rtp_record_raw_) {
                         const bool forward_rtp = GuiInterface::Instance().local_rtp_frame_index_source_ ==
                             LocalRtpFrameIndexSource::RtpFrame;

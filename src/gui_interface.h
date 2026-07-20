@@ -57,7 +57,7 @@ const revector::ColorU GREEN = revector::ColorU(78, 135, 82);
 const revector::ColorU RED = revector::ColorU(201, 79, 79);
 const revector::ColorU YELLOW = revector::ColorU(255, 201, 14);
 
-enum class LocalRtpFrameIndexSource { RtpFrame, DecodedFrame };
+enum class LocalRtpFrameIndexSource { RtpFrame, DecodedFrame, RenderedFrame };
 
 enum class LedControlMode { Udp, Serial };
 
@@ -550,6 +550,7 @@ public:
     std::atomic<uint64_t> timeSyncRequestCount_ = 0;
     std::atomic<bool> led_on_ = false;
     std::atomic<uint64_t> decodedFrameCount_ = 0;
+    std::atomic<uint64_t> renderedFrameCount_ = 0;
 
     int playerPort = 0;
     std::string playerCodec;
