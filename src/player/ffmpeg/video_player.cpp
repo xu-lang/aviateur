@@ -10,6 +10,7 @@
 
 #include "../../gui_interface.h"
 #include "jpeg_encoder.h"
+#include "local_led_mp4_exporter.h"
 
 #define DEFAULT_GIF_FRAMERATE 10
 
@@ -210,6 +211,7 @@ void VideoPlayerFfmpeg::start_local_decoded_frame_recording() {
 }
 
 void VideoPlayerFfmpeg::stop_local_decoded_frame_recording() {
+    const bool should_export = localDecodedFrameRecording_ && localDecodedFrameIndex_ > 0;
     if (decoder) {
         decoder->decodedFrameRecordCallback = nullptr;
     }
@@ -219,6 +221,9 @@ void VideoPlayerFfmpeg::stop_local_decoded_frame_recording() {
     }
     if (localDecodedFrameStream_.is_open()) {
         localDecodedFrameStream_.close();
+    }
+    if (should_export) {
+        LocalLedMp4Exporter::export_stream(std::filesystem::current_path().string() + "/", "frames.yuv", "YUV");
     }
 }
 

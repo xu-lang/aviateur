@@ -38,6 +38,7 @@
 #define CONFIG_LOCALHOST "localhost"
 #define CONFIG_LOCALHOST_PORT "port"
 #define CONFIG_LOCALHOST_CODEC "codec"
+#define CONFIG_LOCALHOST_LED_CONTROL "led_control"
 
 #define CONFIG_SETTINGS "settings"
 #define CONFIG_SETTINGS_LANG "language"
@@ -57,6 +58,8 @@ const revector::ColorU RED = revector::ColorU(201, 79, 79);
 const revector::ColorU YELLOW = revector::ColorU(255, 201, 14);
 
 enum class LocalRtpFrameIndexSource { RtpFrame, DecodedFrame };
+
+enum class LedControlMode { Udp, Serial };
 
 const std::map<int, std::string> CHANNELS = {
     // 2.4GHz
@@ -194,6 +197,9 @@ public:
             use_vulkan_ = true;
 #endif
             rtp_codec_ = ini_[CONFIG_LOCALHOST][CONFIG_LOCALHOST_CODEC];
+            led_control_mode_ = ini_[CONFIG_LOCALHOST][CONFIG_LOCALHOST_LED_CONTROL] == "serial" ?
+                LedControlMode::Serial :
+                LedControlMode::Udp;
             dark_mode_ = ini_[CONFIG_SETTINGS][CONFIG_SETTINGS_DARK_MODE] == "true";
         }
     }
@@ -264,11 +270,16 @@ public:
 
             ini[CONFIG_LOCALHOST][CONFIG_LOCALHOST_PORT] = "5600";
             ini[CONFIG_LOCALHOST][CONFIG_LOCALHOST_CODEC] = "H264";
+            ini[CONFIG_LOCALHOST][CONFIG_LOCALHOST_LED_CONTROL] = "udp";
 
             ini[CONFIG_SETTINGS][CONFIG_SETTINGS_LANG] = "en";
             ini[CONFIG_SETTINGS][CONFIG_SETTINGS_MEDIA_BACKEND] = "ffmpeg";
             ini[CONFIG_SETTINGS][CONFIG_SETTINGS_RENDER_BACKEND] = "opengl";
             ini[CONFIG_SETTINGS][CONFIG_SETTINGS_DARK_MODE] = "true";
+        }
+
+        if (!ini[CONFIG_LOCALHOST].has(CONFIG_LOCALHOST_LED_CONTROL)) {
+            ini[CONFIG_LOCALHOST][CONFIG_LOCALHOST_LED_CONTROL] = "udp";
         }
 
         if (read_success) {
@@ -292,6 +303,8 @@ public:
         Instance().ini_[CONFIG_SETTINGS][CONFIG_SETTINGS_DARK_MODE] = Instance().dark_mode_ ? "true" : "false";
 
         Instance().ini_[CONFIG_LOCALHOST][CONFIG_LOCALHOST_CODEC] = Instance().rtp_codec_;
+        Instance().ini_[CONFIG_LOCALHOST][CONFIG_LOCALHOST_LED_CONTROL] =
+            Instance().led_control_mode_ == LedControlMode::Serial ? "serial" : "udp";
 
         auto dir = GetAppDataDir();
 
@@ -545,6 +558,7 @@ public:
     std::string rtp_codec_;
     bool local_rtp_record_raw_ = false;
     LocalRtpFrameIndexSource local_rtp_frame_index_source_ = LocalRtpFrameIndexSource::RtpFrame;
+    LedControlMode led_control_mode_ = LedControlMode::Udp;
     std::unique_ptr<LocalRtpRecorder> local_rtp_recorder_;
 
     bool dark_mode_ = false;

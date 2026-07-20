@@ -547,6 +547,50 @@ void ControlPanel::custom_ready() {
         }
 
         {
+            auto hbox_container = std::make_shared<revector::HBoxContainer>();
+            hbox_container->set_separation(8);
+            vbox_blockable->add_child(hbox_container);
+
+            auto label = std::make_shared<revector::Label>();
+            label->set_text("LED control");
+            hbox_container->add_child(label);
+
+            auto vbox_container = std::make_shared<revector::VBoxContainer>();
+            vbox_container->container_sizing.flag_h = revector::ContainerSizingFlag::Fill;
+            hbox_container->add_child(vbox_container);
+
+            led_control_button_group_ = std::make_shared<revector::ToggleButtonGroup>();
+
+            {
+                auto udp_btn = std::make_shared<revector::RadioButton>();
+                udp_btn->set_text("UDP");
+                udp_btn->container_sizing.flag_h = revector::ContainerSizingFlag::Fill;
+                vbox_container->add_child(udp_btn);
+                udp_btn->set_toggled_no_signal(GuiInterface::Instance().led_control_mode_ == LedControlMode::Udp);
+                udp_btn->connect_signal("toggled", [](bool toggled) {
+                    if (toggled) {
+                        GuiInterface::Instance().led_control_mode_ = LedControlMode::Udp;
+                    }
+                });
+                led_control_button_group_->add_button(udp_btn);
+            }
+
+            {
+                auto serial_btn = std::make_shared<revector::RadioButton>();
+                serial_btn->set_text("Serial TX");
+                serial_btn->container_sizing.flag_h = revector::ContainerSizingFlag::Fill;
+                vbox_container->add_child(serial_btn);
+                serial_btn->set_toggled_no_signal(GuiInterface::Instance().led_control_mode_ == LedControlMode::Serial);
+                serial_btn->connect_signal("toggled", [](bool toggled) {
+                    if (toggled) {
+                        GuiInterface::Instance().led_control_mode_ = LedControlMode::Serial;
+                    }
+                });
+                led_control_button_group_->add_button(serial_btn);
+            }
+        }
+
+        {
             record_raw_rtp_button_ = std::make_shared<revector::CheckButton>();
             record_raw_rtp_button_->set_text("record raw RTP");
             record_raw_rtp_button_->connect_signal("toggled", [](bool toggled) {

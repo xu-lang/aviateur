@@ -1,6 +1,7 @@
 #include "local_rtp_recorder.h"
 
 #include "gui_interface.h"
+#include "player/ffmpeg/local_led_mp4_exporter.h"
 
 #include <chrono>
 #include <filesystem>
@@ -141,6 +142,12 @@ void LocalRtpRecorder::stop() {
     if (stream_.is_open()) {
         stream_.close();
     }
+    if (!output_dir_.empty() && !stream_file_name_.empty() && output_offset_ > 0) {
+        LocalLedMp4Exporter::export_stream(output_dir_, stream_file_name_, codec_);
+    }
+    output_dir_.clear();
+    stream_file_name_.clear();
+    output_offset_ = 0;
 }
 
 void LocalRtpRecorder::run(int listen_port, int forward_port, std::string codec) {
