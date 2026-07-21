@@ -761,7 +761,8 @@ void ControlPanel::custom_ready() {
                     if (GuiInterface::Instance().use_gstreamer_) {
                         GuiInterface::Instance().EmitRtpStream("udp://0.0.0.0:" + std::to_string(play_port));
                     } else {
-                        GuiInterface::Instance().NotifyRtpStream(97,
+                        const int payload_type = GuiInterface::Instance().rtp_codec_ == "H265" ? 97 : 96;
+                        GuiInterface::Instance().NotifyRtpStream(payload_type,
                                                                    0,
                                                                    play_port,
                                                                    GuiInterface::Instance().rtp_codec_,
