@@ -820,7 +820,10 @@ void PlayerRect::start_playing(const std::string &url) {
         }
     }
 
-    player_->play(url, force_software_decoding);
+    const bool force_software = force_software_decoding ||
+        (!GuiInterface::Instance().is_using_wifi &&
+         (GuiInterface::Instance().local_rtp_record_raw_ || GuiInterface::Instance().local_remote_capture_enabled_));
+    player_->play(url, force_software);
 
     texture = render_image_;
 

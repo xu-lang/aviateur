@@ -30,6 +30,7 @@ public:
     std::shared_ptr<revector::Button> play_button_;
 
     std::shared_ptr<revector::Button> play_port_button_;
+    std::shared_ptr<revector::CheckButton> remote_capture_button_;
     std::shared_ptr<revector::CheckButton> record_raw_rtp_button_;
     std::shared_ptr<revector::ToggleButtonGroup> led_control_button_group_;
     std::shared_ptr<revector::ToggleButtonGroup> frame_index_source_button_group_;

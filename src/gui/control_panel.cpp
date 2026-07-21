@@ -1,8 +1,63 @@
 #include "control_panel.h"
 
+#include <cstdlib>
+#include <thread>
+
 #include <resources/default_resource.h>
 
 #include "settings_tab.h"
+
+namespace {
+
+constexpr auto REMOTE_CAPTURE_TARGET = "root@192.168.1.10";
+constexpr auto REMOTE_CAPTURE_PASSWORD = "12345";
+
+std::string ShellQuote(const std::string &value) {
+    std::string quoted = "'";
+    for (const char c : value) {
+        if (c == '\'') {
+            quoted += "'\\''";
+        } else {
+            quoted += c;
+        }
+    }
+    quoted += "'";
+    return quoted;
+}
+
+void RunRemoteCaptureCommand(bool start) {
+    std::thread([start] {
+        const std::string remote_command = start
+            ? "pkill -f '[s]igmastar_venc_poc' >/dev/null 2>&1 || true; "
+              "nohup /mnt/mmcblk0p1/sigmastar_venc_poc --server 192.168.1.3 --tsync 5602 venc-dump "
+              "-r 1280x720 -f 120 --sensor-config /etc/sensors/imx415_fpv.bin -x 1 -n 0 "
+              "--led-active-high --rtp 5600 --bitrate 4096 >/tmp/aviateur-venc.log 2>&1 < /dev/null & "
+              "echo $! >/tmp/aviateur-venc.pid"
+            : "if [ -f /tmp/aviateur-venc.pid ]; then kill $(cat /tmp/aviateur-venc.pid) >/dev/null 2>&1 || true; "
+              "rm -f /tmp/aviateur-venc.pid; fi; pkill -f '[s]igmastar_venc_poc' >/dev/null 2>&1 || true";
+
+        const std::string command = fmt::format(
+            "SSHPASS={} sshpass -e ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
+            "-o ConnectTimeout=5 {} {}",
+            ShellQuote(REMOTE_CAPTURE_PASSWORD),
+            REMOTE_CAPTURE_TARGET,
+            ShellQuote("sh -c " + ShellQuote(remote_command)));
+
+        GuiInterface::Instance().PutLog(LogLevel::Info,
+                                        start ? "Starting remote device capture" : "Stopping remote device capture");
+        const int result = std::system(command.c_str());
+        if (result == 0) {
+            GuiInterface::Instance().PutLog(LogLevel::Info,
+                                            start ? "Remote device capture started" : "Remote device capture stopped");
+        } else {
+            GuiInterface::Instance().PutLog(LogLevel::Error,
+                                            "Remote device capture command failed with exit code {}",
+                                            result);
+        }
+    }).detach();
+}
+
+} // namespace
 
 void ControlPanel::update_dongle_list(const std::shared_ptr<revector::MenuButton> &menu_button,
                                       std::string &dongle_name) {
@@ -591,6 +646,15 @@ void ControlPanel::custom_ready() {
         }
 
         {
+            remote_capture_button_ = std::make_shared<revector::CheckButton>();
+            remote_capture_button_->set_text("start device capture");
+            remote_capture_button_->connect_signal("toggled", [](bool toggled) {
+                GuiInterface::Instance().local_remote_capture_enabled_ = toggled;
+            });
+            vbox_blockable->add_child(remote_capture_button_);
+        }
+
+        {
             record_raw_rtp_button_ = std::make_shared<revector::CheckButton>();
             record_raw_rtp_button_->set_text("record raw RTP");
             record_raw_rtp_button_->connect_signal("toggled", [](bool toggled) {
@@ -676,11 +740,14 @@ void ControlPanel::custom_ready() {
                     int play_port = std::stoi(port);
                     GuiInterface::Instance().decodedFrameCount_.store(0, std::memory_order_relaxed);
                     GuiInterface::Instance().renderedFrameCount_.store(0, std::memory_order_relaxed);
+                    if (GuiInterface::Instance().local_remote_capture_enabled_) {
+                        RunRemoteCaptureCommand(true);
+                    }
                     if (GuiInterface::Instance().local_rtp_record_raw_) {
                         const bool forward_rtp = GuiInterface::Instance().local_rtp_frame_index_source_ ==
                             LocalRtpFrameIndexSource::RtpFrame;
                         if (forward_rtp) {
-                            const int forward_port = GuiInterface::GetFreePort(play_port + 1);
+                            const int forward_port = 15600;
                             GuiInterface::Instance().local_rtp_recorder_ = std::make_unique<LocalRtpRecorder>();
                             if (GuiInterface::Instance().local_rtp_recorder_->start(
                                     play_port, forward_port, GuiInterface::Instance().rtp_codec_)) {
@@ -710,6 +777,9 @@ void ControlPanel::custom_ready() {
                         GuiInterface::Instance().local_rtp_recorder_.reset();
                     }
                     GuiInterface::Instance().EmitUrlStreamShouldStop();
+                    if (GuiInterface::Instance().local_remote_capture_enabled_) {
+                        RunRemoteCaptureCommand(false);
+                    }
 
                     udp_prop_block_->set_visibility(false);
                 }

@@ -557,6 +557,7 @@ public:
 
     // Local RTP listener
     std::string rtp_codec_;
+    bool local_remote_capture_enabled_ = false;
     bool local_rtp_record_raw_ = false;
     LocalRtpFrameIndexSource local_rtp_frame_index_source_ = LocalRtpFrameIndexSource::RtpFrame;
     LedControlMode led_control_mode_ = LedControlMode::Udp;

@@ -68,6 +68,8 @@ std::shared_ptr<AVFrame> VideoPlayerFfmpeg::getFrame() {
 }
 
 void VideoPlayerFfmpeg::play(const std::string &playUrl, bool forceSoftwareDecoding) {
+    stop();
+
     should_stop_playing_ = false;
 
     if (analysisThread.joinable()) {
@@ -150,38 +152,26 @@ void VideoPlayerFfmpeg::play(const std::string &playUrl, bool forceSoftwareDecod
             decodeResMtx.unlock();
         });
 
-        // Start decode thread.
-        decodeThread.detach();
-
         // We are done with ffmpeg resources.
         analysisResMtx.unlock();
     });
-
-    // Start analysis thread.
-    analysisThread.detach();
 }
 
 void VideoPlayerFfmpeg::stop() {
     should_stop_playing_ = true;
-    stop_local_decoded_frame_recording();
 
     if (decoder && decoder->pFormatCtx) {
         decoder->pFormatCtx->interrupt_callback.callback = [](void *) { return 1; };
     }
 
-    // The thread will be unjoinable after calling detach().
-    // if (analysisThread.joinable()) {
-    //     analysisThread.join();
-    // }
-    // if (decodeThread.joinable()) {
-    //     decodeThread.join();
-    // }
-
-    // Wait until the detached threads finish.
-    {
-        std::lock_guard lck1(analysisResMtx);
-        std::lock_guard lck2(decodeResMtx);
+    if (analysisThread.joinable() && analysisThread.get_id() != std::this_thread::get_id()) {
+        analysisThread.join();
     }
+    if (decodeThread.joinable() && decodeThread.get_id() != std::this_thread::get_id()) {
+        decodeThread.join();
+    }
+
+    stop_local_decoded_frame_recording();
 
     {
         std::lock_guard lck(mtx);
