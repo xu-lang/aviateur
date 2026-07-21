@@ -8,7 +8,9 @@
 
 constexpr size_t MAX_AUDIO_PACKET = 2 * 1024 * 1024;
 
-bool FfmpegDecoder::OpenInput(std::string &inputFile, bool forceSoftwareDecoding) {
+bool FfmpegDecoder::OpenInput(std::string &inputFile,
+                              bool forceSoftwareDecoding,
+                              std::atomic_bool *shouldStop) {
 #ifndef NDEBUG
     av_log_set_level(AV_LOG_ERROR);
 #endif
@@ -58,17 +60,26 @@ bool FfmpegDecoder::OpenInput(std::string &inputFile, bool forceSoftwareDecoding
         return false;
     }
 
-    // Timeout
-    static constexpr int timeout = 10;
     startTime = std::chrono::steady_clock::now();
 
-    pFormatCtx->interrupt_callback.callback = [](void *timestamp) -> int {
+    struct InterruptContext {
+        std::chrono::time_point<std::chrono::steady_clock> *startTime;
+        std::atomic_bool *shouldStop;
+    } interrupt_context{&startTime, shouldStop};
+
+    pFormatCtx->interrupt_callback.callback = [](void *opaque) -> int {
+        const auto context = static_cast<InterruptContext *>(opaque);
+        if (context->shouldStop) {
+            return context->shouldStop->load(std::memory_order_relaxed) ? 1 : 0;
+        }
+
+        static constexpr int timeout = 10;
         const auto now = std::chrono::steady_clock::now();
         const std::chrono::duration<double> duration =
-            now - *(std::chrono::time_point<std::chrono::steady_clock> *)timestamp;
+            now - *context->startTime;
         return duration.count() > timeout;
     };
-    pFormatCtx->interrupt_callback.opaque = &startTime;
+    pFormatCtx->interrupt_callback.opaque = &interrupt_context;
 
     ret = avformat_find_stream_info(pFormatCtx, nullptr);
     if (ret < 0) {
@@ -79,9 +90,9 @@ bool FfmpegDecoder::OpenInput(std::string &inputFile, bool forceSoftwareDecoding
         return false;
     }
 
-    // Timeout
-    if (const std::chrono::duration<double> duration = std::chrono::steady_clock::now() - startTime;
-        duration.count() > timeout) {
+    // Timeout for callers that did not provide an explicit stop flag.
+    if (!shouldStop &&
+        (std::chrono::duration<double>(std::chrono::steady_clock::now() - startTime).count() > 10)) {
         GuiInterface::Instance().PutLog(LogLevel::Error, "timeout", __FUNCTION__);
         CloseInput();
         return false;

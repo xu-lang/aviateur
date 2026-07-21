@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <functional>
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -31,7 +32,7 @@ public:
         hwFrame.reset();
     }
 
-    bool OpenInput(std::string &inputFile, bool forceSoftwareDecoding);
+    bool OpenInput(std::string &inputFile, bool forceSoftwareDecoding, std::atomic_bool *shouldStop = nullptr);
 
     bool CloseInput();
 

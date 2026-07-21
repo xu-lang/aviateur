@@ -84,7 +84,7 @@ void VideoPlayerFfmpeg::play(const std::string &playUrl, bool forceSoftwareDecod
         // Indicate we are using ffmpeg resources in a detached thread.
         analysisResMtx.lock();
 
-        bool ok = decoder->OpenInput(url, forceSoftwareDecoding);
+        bool ok = decoder->OpenInput(url, forceSoftwareDecoding, &should_stop_playing_);
         if (!ok) {
             GuiInterface::Instance().PutLog(LogLevel::Error, "Loading URL failed");
             analysisResMtx.unlock();
