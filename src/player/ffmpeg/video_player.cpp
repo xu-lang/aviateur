@@ -114,7 +114,7 @@ void VideoPlayerFfmpeg::play(const std::string &playUrl, bool forceSoftwareDecod
         // Bitrate callback.
         decoder->bitrateUpdateCallback = [](uint64_t bitrate) { GuiInterface::Instance().EmitBitrateUpdate(bitrate); };
 
-        decodeThread = std::thread([this] {
+        decodeThread = std::thread([this, forceSoftwareDecoding] {
             decodeResMtx.lock();
 
             while (!should_stop_playing_) {
@@ -141,6 +141,19 @@ void VideoPlayerFfmpeg::play(const std::string &playUrl, bool forceSoftwareDecod
                 catch (const ReadFrameException &e) {
                     GuiInterface::Instance().PutLog(LogLevel::Error, e.what());
                     GuiInterface::Instance().ShowTip(FTR("signal lost"));
+                    if (std::string(e.what()).find("End of file") != std::string::npos && !should_stop_playing_) {
+                        GuiInterface::Instance().PutLog(LogLevel::Info, "Reopening FFmpeg input after stream EOF");
+                        decoder->CloseInput();
+                        if (!decoder->OpenInput(url, forceSoftwareDecoding, &should_stop_playing_)) {
+                            if (!should_stop_playing_) {
+                                GuiInterface::Instance().PutLog(LogLevel::Error, "Reopening FFmpeg input failed");
+                            }
+                            continue;
+                        }
+                        if (decoder->HasVideo()) {
+                            update_video_info(decoder->GetWidth(), decoder->GetHeight(), decoder->GetVideoFrameFormat());
+                        }
+                    }
                 }
                 // Break on other unknown errors.
                 catch (const std::exception &e) {
