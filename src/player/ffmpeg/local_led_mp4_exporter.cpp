@@ -11,6 +11,10 @@
 #include <sstream>
 #include <vector>
 
+#ifdef _WIN32
+    #include <windows.h>
+#endif
+
 extern "C" {
 #include <libavutil/opt.h>
 }
@@ -254,6 +258,157 @@ private:
     std::string path_;
 };
 
+#ifdef _WIN32
+std::string QuoteCommandArg(const std::string &value) {
+    std::string quoted = "\"";
+    for (const char c : value) {
+        if (c == '"') {
+            quoted += "\\\"";
+        } else {
+            quoted += c;
+        }
+    }
+    quoted += "\"";
+    return quoted;
+}
+
+std::string FindSystemFfmpeg() {
+    const std::vector<std::string> candidates = {
+        "D:/green-sw/ffmpeg/bin/ffmpeg.exe",
+        "D:/green-sw/ffmpeg/bin/ffmpeg",
+        "ffmpeg.exe",
+        "ffmpeg",
+    };
+    for (const auto &candidate : candidates) {
+        if (candidate.find('/') == std::string::npos || std::filesystem::exists(candidate)) {
+            return candidate;
+        }
+    }
+    return {};
+}
+
+bool WriteYuv420Frame(std::ofstream &output, AVFrame *frame) {
+    if (!frame || frame->format != AV_PIX_FMT_YUV420P) {
+        return false;
+    }
+
+    const int chroma_width = (frame->width + 1) / 2;
+    const int chroma_height = (frame->height + 1) / 2;
+    for (int y = 0; y < frame->height; ++y) {
+        output.write(reinterpret_cast<const char *>(frame->data[0] + y * frame->linesize[0]), frame->width);
+    }
+    for (int y = 0; y < chroma_height; ++y) {
+        output.write(reinterpret_cast<const char *>(frame->data[1] + y * frame->linesize[1]), chroma_width);
+    }
+    for (int y = 0; y < chroma_height; ++y) {
+        output.write(reinterpret_cast<const char *>(frame->data[2] + y * frame->linesize[2]), chroma_width);
+    }
+    return output.good();
+}
+
+int RunProcess(const std::string &command) {
+    STARTUPINFOA startup_info{};
+    startup_info.cb = sizeof(startup_info);
+    PROCESS_INFORMATION process_info{};
+    std::vector<char> command_line(command.begin(), command.end());
+    command_line.push_back('\0');
+
+    if (!CreateProcessA(nullptr,
+                        command_line.data(),
+                        nullptr,
+                        nullptr,
+                        FALSE,
+                        0,
+                        nullptr,
+                        nullptr,
+                        &startup_info,
+                        &process_info)) {
+        return static_cast<int>(GetLastError());
+    }
+
+    WaitForSingleObject(process_info.hProcess, INFINITE);
+    DWORD exit_code = 1;
+    GetExitCodeProcess(process_info.hProcess, &exit_code);
+    CloseHandle(process_info.hThread);
+    CloseHandle(process_info.hProcess);
+    return static_cast<int>(exit_code);
+}
+
+class RawYuvMp4Writer {
+public:
+    ~RawYuvMp4Writer() {
+        close();
+    }
+
+    bool open(const std::string &path, int width, int height, int fps) {
+        path_ = path;
+        width_ = width;
+        height_ = height;
+        fps_ = fps;
+        auto temp_path = std::filesystem::path(path);
+        temp_path.replace_extension(".yuv");
+        temp_path_ = temp_path.string();
+        output_.open(temp_path_, std::ios::binary | std::ios::trunc);
+        opened_ = output_.is_open();
+        if (!opened_) {
+            GuiInterface::Instance().PutLog(LogLevel::Error, "Failed to open temporary YUV file: {}", temp_path_);
+        }
+        return opened_;
+    }
+
+    bool write(AVFrame *frame) {
+        return opened_ && WriteYuv420Frame(output_, frame);
+    }
+
+    void close() {
+        if (!opened_) {
+            return;
+        }
+        output_.close();
+        opened_ = false;
+
+        const auto ffmpeg = FindSystemFfmpeg();
+        if (ffmpeg.empty()) {
+            GuiInterface::Instance().PutLog(LogLevel::Error, "ffmpeg.exe not found for LED MP4 export");
+            return;
+        }
+
+        const std::string size = std::to_string(width_) + "x" + std::to_string(height_);
+        const std::string command = fmt::format(
+            "{} -y -f rawvideo -pix_fmt yuv420p -s {} -r {} -i {} -c:v libx264 -pix_fmt yuv420p -movflags +faststart {}",
+            QuoteCommandArg(ffmpeg),
+            size,
+            fps_,
+            QuoteCommandArg(temp_path_),
+            QuoteCommandArg(path_));
+
+        const int result = RunProcess(command);
+        if (result == 0) {
+            encoded_ = true;
+            GuiInterface::Instance().PutLog(LogLevel::Info, "Exported LED MP4: {}", path_);
+            std::error_code ec;
+            std::filesystem::remove(temp_path_, ec);
+        } else {
+            GuiInterface::Instance().PutLog(LogLevel::Error, "ffmpeg LED MP4 export failed with exit code {}", result);
+        }
+    }
+
+    bool encoded() const {
+        return encoded_;
+    }
+
+private:
+    std::ofstream output_;
+    std::string path_;
+    std::string temp_path_;
+    int width_ = 0;
+    int height_ = 0;
+    int fps_ = 30;
+    bool opened_ = false;
+    bool encoded_ = false;
+};
+#endif
+
 std::shared_ptr<AVFrame> ToYuv420Frame(AVFrame *src,
                                        SwsContext *&sws_ctx,
                                        std::vector<uint8_t> &buffer) {
@@ -321,7 +476,11 @@ bool ExportRawVideo(const std::string &input_path,
         return false;
     }
 
+#ifdef _WIN32
+    RawYuvMp4Writer writer;
+#else
     Mp4Writer writer;
+#endif
     bool writer_opened = false;
     size_t frame_index = 0;
     SwsContext *sws_ctx = nullptr;
@@ -371,7 +530,11 @@ bool ExportRawVideo(const std::string &input_path,
     av_packet_free(&packet);
     avcodec_free_context(&decoder_ctx);
     avformat_close_input(&format_ctx);
+#ifdef _WIN32
+    return writer_opened && writer.encoded();
+#else
     return writer_opened;
+#endif
 }
 
 bool ExportYuv(const std::string &input_path,
@@ -387,7 +550,11 @@ bool ExportYuv(const std::string &input_path,
         return false;
     }
 
+#ifdef _WIN32
+    RawYuvMp4Writer writer;
+#else
     Mp4Writer writer;
+#endif
     if (!writer.open(output_path, meta[0].width, meta[0].height, fps)) {
         return false;
     }
@@ -427,7 +594,11 @@ bool ExportYuv(const std::string &input_path,
 
     writer.close();
     sws_freeContext(sws_ctx);
+#ifdef _WIN32
+    return writer.encoded();
+#else
     return true;
+#endif
 }
 
 } // namespace
