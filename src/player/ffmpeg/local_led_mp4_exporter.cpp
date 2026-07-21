@@ -66,6 +66,18 @@ std::vector<FrameMeta> ReadFrameMeta(const std::string &path) {
     return frames;
 }
 
+std::string HackPositionName() {
+    switch (GuiInterface::Instance().local_rtp_frame_index_source_) {
+        case LocalRtpFrameIndexSource::RtpFrame:
+            return "rtp_received";
+        case LocalRtpFrameIndexSource::DecodedFrame:
+            return "frame_decoded";
+        case LocalRtpFrameIndexSource::RenderedFrame:
+            return "frame_rendered";
+    }
+    return "unknown";
+}
+
 int EstimateFrameRate(const std::vector<FrameMeta> &frames) {
     if (frames.size() < 2) {
         return 30;
@@ -425,7 +437,7 @@ bool LocalLedMp4Exporter::export_stream(const std::string &output_dir,
                                         const std::string &codec) {
     const auto input_path = output_dir + stream_file_name;
     const auto tsv_path = output_dir + "frames.tsv";
-    const auto output_path = output_dir + "frames_led.mp4";
+    const auto output_path = output_dir + "frames_led_" + HackPositionName() + ".mp4";
     if (!std::filesystem::exists(input_path) || !std::filesystem::exists(tsv_path)) {
         return false;
     }

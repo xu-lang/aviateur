@@ -632,7 +632,7 @@ void ControlPanel::custom_ready() {
 
             {
                 auto serial_btn = std::make_shared<revector::RadioButton>();
-                serial_btn->set_text("Serial TX");
+                serial_btn->set_text("serial");
                 serial_btn->container_sizing.flag_h = revector::ContainerSizingFlag::Fill;
                 vbox_container->add_child(serial_btn);
                 serial_btn->set_toggled_no_signal(GuiInterface::Instance().led_control_mode_ == LedControlMode::Serial);
@@ -647,7 +647,7 @@ void ControlPanel::custom_ready() {
 
         {
             remote_capture_button_ = std::make_shared<revector::CheckButton>();
-            remote_capture_button_->set_text("start device capture");
+            remote_capture_button_->set_text("auto start camera");
             remote_capture_button_->connect_signal("toggled", [](bool toggled) {
                 GuiInterface::Instance().local_remote_capture_enabled_ = toggled;
             });
@@ -656,7 +656,7 @@ void ControlPanel::custom_ready() {
 
         {
             record_raw_rtp_button_ = std::make_shared<revector::CheckButton>();
-            record_raw_rtp_button_->set_text("record raw RTP");
+            record_raw_rtp_button_->set_text("hack capture");
             record_raw_rtp_button_->connect_signal("toggled", [](bool toggled) {
                 GuiInterface::Instance().local_rtp_record_raw_ = toggled;
             });
@@ -669,7 +669,7 @@ void ControlPanel::custom_ready() {
             vbox_blockable->add_child(hbox_container);
 
             auto label = std::make_shared<revector::Label>();
-            label->set_text("frame index");
+            label->set_text("hack index");
             hbox_container->add_child(label);
 
             auto vbox_container = std::make_shared<revector::VBoxContainer>();
@@ -680,7 +680,7 @@ void ControlPanel::custom_ready() {
 
             {
                 auto rtp_btn = std::make_shared<revector::RadioButton>();
-                rtp_btn->set_text("RTP received");
+                rtp_btn->set_text("frame received");
                 rtp_btn->container_sizing.flag_h = revector::ContainerSizingFlag::Fill;
                 vbox_container->add_child(rtp_btn);
                 rtp_btn->set_toggled_no_signal(GuiInterface::Instance().local_rtp_frame_index_source_ ==
