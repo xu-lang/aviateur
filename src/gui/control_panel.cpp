@@ -26,6 +26,31 @@ std::string ShellQuote(const std::string &value) {
     return quoted;
 }
 
+std::string LocalShellQuote(const std::string &value) {
+#ifdef _WIN32
+    std::string quoted = "\"";
+    for (const char c : value) {
+        if (c == '"') {
+            quoted += "\\\"";
+        } else {
+            quoted += c;
+        }
+    }
+    quoted += "\"";
+    return quoted;
+#else
+    return ShellQuote(value);
+#endif
+}
+
+const char *LocalNullRedirect() {
+#ifdef _WIN32
+    return ">NUL";
+#else
+    return ">/dev/null";
+#endif
+}
+
 void RunRemoteCaptureCommand(bool start) {
     std::thread([start] {
         const std::string remote_command = start
@@ -60,9 +85,10 @@ void RunRemoteCaptureCommand(bool start) {
 
 void RequestRemoteIdrBurst() {
     std::thread([] {
-        const std::string command = fmt::format("curl -fsS -u {} {} >/dev/null",
-                                                ShellQuote(std::string("root:") + REMOTE_CAPTURE_PASSWORD),
-                                                ShellQuote("http://192.168.1.10/request/idr"));
+        const std::string command = fmt::format("curl -fsS -u {} {} {}",
+                                                LocalShellQuote(std::string("root:") + REMOTE_CAPTURE_PASSWORD),
+                                                LocalShellQuote("http://192.168.1.10/request/idr"),
+                                                LocalNullRedirect());
 
         constexpr int request_count = 5;
         for (int i = 0; i < request_count; ++i) {

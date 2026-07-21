@@ -104,9 +104,9 @@ void DrawLedBlock(AVFrame *frame) {
         return;
     }
 
-    const int block = std::max(16, std::min(frame->width, frame->height) / 12);
-    const int width = std::min(block, frame->width);
-    const int height = std::min(block, frame->height);
+    const int block = (std::max)(16, (std::min)(frame->width, frame->height) / 12);
+    const int width = (std::min)(block, frame->width);
+    const int height = (std::min)(block, frame->height);
 
     for (int y = 0; y < height; ++y) {
         std::fill_n(frame->data[0] + y * frame->linesize[0], width, 149);
