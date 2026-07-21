@@ -1,5 +1,6 @@
 #include "control_panel.h"
 
+#include <chrono>
 #include <cstdlib>
 #include <thread>
 
@@ -53,6 +54,30 @@ void RunRemoteCaptureCommand(bool start) {
             GuiInterface::Instance().PutLog(LogLevel::Error,
                                             "Remote device capture command failed with exit code {}",
                                             result);
+        }
+    }).detach();
+}
+
+void RequestRemoteIdrBurst() {
+    std::thread([] {
+        const std::string command = fmt::format("curl -fsS -u {} {} >/dev/null",
+                                                ShellQuote(std::string("root:") + REMOTE_CAPTURE_PASSWORD),
+                                                ShellQuote("http://192.168.1.10/request/idr"));
+
+        constexpr int request_count = 5;
+        for (int i = 0; i < request_count; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            GuiInterface::Instance().PutLog(LogLevel::Info, "Requesting remote IDR frame ({}/{})", i + 1, request_count);
+            const int result = std::system(command.c_str());
+            if (result == 0) {
+                GuiInterface::Instance().PutLog(LogLevel::Info, "Remote IDR frame requested ({}/{})", i + 1, request_count);
+            } else {
+                GuiInterface::Instance().PutLog(LogLevel::Error,
+                                                "Remote IDR request failed with exit code {} ({}/{})",
+                                                result,
+                                                i + 1,
+                                                request_count);
+            }
         }
     }).detach();
 }
@@ -768,6 +793,7 @@ void ControlPanel::custom_ready() {
                                                                    GuiInterface::Instance().rtp_codec_,
                                                                    "0.0.0.0");
                     }
+                    RequestRemoteIdrBurst();
 
                     GuiInterface::Instance().ini_[CONFIG_LOCALHOST][CONFIG_LOCALHOST_PORT] = port;
 
