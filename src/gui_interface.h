@@ -598,6 +598,7 @@ public:
     std::vector<revector::AnyCallable<void>> bitrateUpdateCallbacks;
     std::vector<revector::AnyCallable<void>> decoderReadyCallbacks;
     std::vector<revector::AnyCallable<void>> videoFrameDecodedCallbacks;
+    std::vector<revector::AnyCallable<void>> rtpFrameReceivedCallbacks;
     std::vector<revector::AnyCallable<void>> rtpTimestampCallbacks;
 
     std::vector<revector::AnyCallable<void>> urlStreamShouldStopCallbacks;
@@ -696,6 +697,16 @@ public:
     void EmitVideoFrameDecoded(uint64_t timestampMs) {
         decodedFrameCount_.fetch_add(1, std::memory_order_relaxed);
         for (auto &callback : videoFrameDecodedCallbacks) {
+            try {
+                callback.operator()<uint64_t>(std::move(timestampMs));
+            } catch (std::bad_any_cast &) {
+                Instance().PutLog(LogLevel::Error, "Mismatched signal argument types!");
+            }
+        }
+    }
+
+    void EmitRtpFrameReceived(uint64_t timestampMs) {
+        for (auto &callback : rtpFrameReceivedCallbacks) {
             try {
                 callback.operator()<uint64_t>(std::move(timestampMs));
             } catch (std::bad_any_cast &) {

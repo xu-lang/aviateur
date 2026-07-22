@@ -227,7 +227,7 @@ void PlayerRect::custom_ready() {
     timestamp_overlay_label_->set_anchor_flag(revector::AnchorFlag::TopLeft);
     timestamp_overlay_label_->set_custom_minimum_size({520, 28});
     timestamp_overlay_label_->set_font_size(HUD_LABEL_FONT_SIZE);
-    timestamp_overlay_label_->set_text("IN: ----ms F: ----ms R: ----ms");
+    timestamp_overlay_label_->set_text("DEC AVG: ----ms");
     timestamp_overlay_label_->set_visibility(false);
 
     clock_label_ = std::make_shared<revector::Label>();
@@ -397,6 +397,15 @@ void PlayerRect::custom_ready() {
     };
     GuiInterface::Instance().rtpTimestampCallbacks.emplace_back(on_rtp_timestamp);
 
+    auto on_rtp_frame_received = [this](uint64_t timestamp_ms) {
+        std::lock_guard lock(received_frame_timestamps_mutex_);
+        received_frame_timestamps_ms_.push(timestamp_ms);
+        while (received_frame_timestamps_ms_.size() > 120) {
+            received_frame_timestamps_ms_.pop();
+        }
+    };
+    GuiInterface::Instance().rtpFrameReceivedCallbacks.emplace_back(on_rtp_frame_received);
+
     frame_ts_label_ = std::make_shared<revector::Label>();
     label_container_->add_child(frame_ts_label_);
     frame_ts_label_->set_font_size(HUD_LABEL_FONT_SIZE);
@@ -404,6 +413,21 @@ void PlayerRect::custom_ready() {
 
     auto on_frame_decoded = [this](uint64_t timestamp_ms) {
         last_decoded_frame_timestamp_ms_.store(timestamp_ms, std::memory_order_relaxed);
+        uint64_t received_ms = 0;
+        {
+            std::lock_guard lock(received_frame_timestamps_mutex_);
+            if (!received_frame_timestamps_ms_.empty()) {
+                received_ms = received_frame_timestamps_ms_.front();
+                received_frame_timestamps_ms_.pop();
+            }
+        }
+        if (received_ms == 0) {
+            received_ms = last_rtp_timestamp_ms_.load(std::memory_order_relaxed);
+        }
+        if (received_ms != 0 && timestamp_ms >= received_ms) {
+            decode_latency_total_ms_.fetch_add(timestamp_ms - received_ms, std::memory_order_relaxed);
+            decode_latency_count_.fetch_add(1, std::memory_order_relaxed);
+        }
         decoded_frame_count_.fetch_add(1, std::memory_order_relaxed);
     };
     GuiInterface::Instance().videoFrameDecodedCallbacks.emplace_back(on_frame_decoded);
@@ -750,28 +774,17 @@ void PlayerRect::custom_draw() {
                                     std::chrono::system_clock::now().time_since_epoch())
                                     .count();
 
-        const auto decoded_ms = last_decoded_frame_timestamp_ms_.load(std::memory_order_relaxed);
-        if (decoded_ms != 0) {
-            frame_ts_label_->set_text(fmt::format("F: {:04}ms", decoded_ms % 10000));
-            frame_ts_label_->set_visibility(true);
-        }
-
-        const auto rtp_ms = last_rtp_timestamp_ms_.load(std::memory_order_relaxed);
-        if (rtp_ms != 0) {
-            rtp_ts_label_->set_text(fmt::format("IN: {:04}ms", rtp_ms % 10000));
-        } else {
-            rtp_ts_label_->set_text("IN: ----ms");
-        }
-        rtp_ts_label_->set_visibility(true);
-
-        render_ts_label_->set_text(fmt::format("R: {:04}ms", now_ms % 10000));
-        render_ts_label_->set_visibility(true);
-
-        timestamp_overlay_label_->set_text(fmt::format("IN: {}ms F: {}ms R: {:04}ms",
-                                                       rtp_ms != 0 ? fmt::format("{:04}", rtp_ms % 10000) : "----",
-                                                       decoded_ms != 0 ? fmt::format("{:04}", decoded_ms % 10000)
-                                                                       : "----",
-                                                       now_ms % 10000));
+        const auto latency_count = decode_latency_count_.load(std::memory_order_relaxed);
+        const auto latency_text = latency_count != 0
+            ? fmt::format("DEC AVG: {:.1f}ms",
+                          static_cast<double>(decode_latency_total_ms_.load(std::memory_order_relaxed)) /
+                              static_cast<double>(latency_count))
+            : std::string("DEC AVG: ----ms");
+        frame_ts_label_->set_text(latency_text);
+        frame_ts_label_->set_visibility(true);
+        rtp_ts_label_->set_visibility(false);
+        render_ts_label_->set_visibility(false);
+        timestamp_overlay_label_->set_text(latency_text);
         timestamp_overlay_label_->set_visibility(true);
     }
 }

@@ -271,7 +271,9 @@ void LocalRtpRecorder::run(int listen_port, int forward_port, std::string codec)
         process_rtp_packet(buffer, received);
         frame_packet_count_++;
         if (marker) {
-            flush_frame(rtp_timestamp, seq, NowMs());
+            const auto received_ms = NowMs();
+            GuiInterface::Instance().EmitRtpFrameReceived(received_ms);
+            flush_frame(rtp_timestamp, seq, received_ms);
         }
     }
 

@@ -55,6 +55,7 @@ protected:
 
         auto *header = (RtpHeader *)payload;
         const uint16_t seq_num = ntohs(header->seq);
+        const bool marker = (payload[1] & 0x80) != 0;
 
         GuiInterface::Instance().PutLog(LogLevel::Debug, "RTP sequence number: {}", seq_num);
         GuiInterface::Instance().PutLog(LogLevel::Debug, "RTP timestamp: {}", htonl(header->stamp));
@@ -78,6 +79,13 @@ protected:
             GuiInterface::Instance().PutLog(LogLevel::Info, "RTP packets lost: {}", lost);
         }
         prev_seq_num = seq_num;
+
+        if (marker) {
+            const uint64_t received_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                             std::chrono::system_clock::now().time_since_epoch())
+                                             .count();
+            GuiInterface::Instance().EmitRtpFrameReceived(received_ms);
+        }
 
         // Send payload via socket.
         sendto(sockfd, payload, packet_size, 0, (sockaddr *)&saddr, sizeof(saddr));
@@ -730,6 +738,7 @@ void WfbngLink::handle_rtp(uint8_t *payload, uint16_t packet_size) {
 
     auto *header = (RtpHeader *)payload;
     const uint16_t seq_num = ntohs(header->seq);
+    const bool marker = (payload[1] & 0x80) != 0;
     if (prev_rtp_seq_num_.has_value()) {
         const uint16_t diff = seq_num - prev_rtp_seq_num_.value();
         if (diff > 1 && diff < 0x8000) {
@@ -739,6 +748,13 @@ void WfbngLink::handle_rtp(uint8_t *payload, uint16_t packet_size) {
         }
     }
     prev_rtp_seq_num_ = seq_num;
+
+    if (marker) {
+        const uint64_t received_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                         std::chrono::system_clock::now().time_since_epoch())
+                                         .count();
+        GuiInterface::Instance().EmitRtpFrameReceived(received_ms);
+    }
 
     if (!first_rtp_packet_received) {
         first_rtp_packet_received = true;

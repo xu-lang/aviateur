@@ -5,6 +5,8 @@
 #include "tip_label.h"
 
 #include <atomic>
+#include <mutex>
+#include <queue>
 
 class SignalBar;
 class SignalMetricsOverlay;
@@ -85,7 +87,11 @@ public:
 
     std::atomic<uint64_t> last_decoded_frame_timestamp_ms_ = 0;
     std::atomic<uint64_t> last_rtp_timestamp_ms_ = 0;
+    std::atomic<uint64_t> decode_latency_total_ms_ = 0;
+    std::atomic<uint64_t> decode_latency_count_ = 0;
     std::atomic<uint64_t> decoded_frame_count_ = 0;
+    std::mutex received_frame_timestamps_mutex_;
+    std::queue<uint64_t> received_frame_timestamps_ms_;
     uint64_t last_video_fps_frame_count_ = 0;
     std::chrono::steady_clock::time_point last_video_fps_update_time_{};
     double display_refresh_rate_hz_ = 60.0;
